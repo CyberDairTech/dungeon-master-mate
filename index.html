@@ -63,7 +63,7 @@
         </div>
     </div>
 
-    <div id="roll-toast" class="fixed top-4 left-4 right-4 bg-yellow-600 text-white p-4 rounded shadow-lg hidden z-50 font-bold text-sm text-center"></div>
+    <div id="roll-toast" class="fixed top-1/2 left-4 right-4 -translate-y-1/2 bg-yellow-600 text-white p-4 rounded shadow-lg hidden z-50 font-bold text-sm text-center" style="transform: translateY(-50%)"></div>
 
     <!-- ── Top bar ── -->
     <header class="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center sticky top-0 z-40"
@@ -437,20 +437,33 @@
 
         // ── Ailment in encounter ─────────────────────────────────────────
         function assignAilment(eId, cId, ailName) {
+            if (!ailName) return;
             const e = encounters.find(en => en.id === eId);
             const c = e?.combatants.find(co => co.id === cId);
             if (!c) return;
             const ail = ailmentLibrary.find(a => a.name === ailName);
-            c.ailment = ailName || null;
-            c.roundsLeft = ail ? parseInt(ail.duration) : null;
+            if (!ail) return;
+            if (!c.ailments) c.ailments = [];
+            c.ailments.push({ name: ailName, roundsLeft: parseInt(ail.duration) });
             save(); renderEncounters();
         }
 
-        function rollAilmentDamage(eId, cId, ailName) {
+        function removeAilment(eId, cId, ailIdx) {
             const e = encounters.find(en => en.id === eId);
             const c = e?.combatants.find(co => co.id === cId);
-            const ail = ailmentLibrary.find(a => a.name === ailName);
-            if (!c || !ail) return;
+            if (!c || !c.ailments) return;
+            c.ailments.splice(ailIdx, 1);
+            save(); renderEncounters();
+        }
+
+        function rollAilmentDamage(eId, cId, ailIdx) {
+            const e = encounters.find(en => en.id === eId);
+            const c = e?.combatants.find(co => co.id === cId);
+            if (!c || !c.ailments) return;
+            const entry = c.ailments[ailIdx];
+            if (!entry) return;
+            const ail = ailmentLibrary.find(a => a.name === entry.name);
+            if (!ail) return;
 
             const noDmg = ail.damage === 'none';
             let total = 0;
@@ -459,33 +472,37 @@
                 for (let i = 0; i < parseInt(countStr); i++) total += Math.floor(Math.random() * parseInt(typeStr)) + 1;
             }
 
-            const newRounds = (c.roundsLeft ?? parseInt(ail.duration)) - 1;
+            const newRounds = entry.roundsLeft - 1;
             const expired = newRounds <= 0;
 
             if (!noDmg && c.type === 'npc') c.hp = Math.max(0, c.hp - total);
-            c.roundsLeft = expired ? null : newRounds;
-            c.ailment    = expired ? null : c.ailment;
+            if (expired) {
+                c.ailments.splice(ailIdx, 1);
+            } else {
+                entry.roundsLeft = newRounds;
+            }
 
             save(); renderEncounters();
 
             const dmgText = noDmg ? 'no damage' : `${total} dmg (${ail.damage})`;
-            showToast(`🩸 ${ail.name} on ${c.name}: ${dmgText}${expired ? ' — expired!' : ` — ${newRounds} rd${newRounds === 1 ? '' : 's'} left`}`);
+            showToast(`🩸 ${entry.name} on ${c.name}: ${dmgText}${expired ? ' — expired!' : ` — ${newRounds} rd${newRounds === 1 ? '' : 's'} left`}`);
         }
 
         function renderAilmentControl(e, c) {
-            const ail = ailmentLibrary.find(a => a.name === c.ailment);
-            if (c.ailment && ail) {
-                const rds = c.roundsLeft ?? ail.duration;
-                const label = ail.damage === 'none' ? `no dmg, ${rds}rds left` : `${ail.damage}, ${rds}rds left`;
-                return `<div class="flex gap-1 w-full">
-                    <button onclick="rollAilmentDamage(${e.id},${c.id},'${c.ailment.replace(/'/g,"\\'")}')" class="bg-purple-900 p-1 rounded text-xs flex-1 text-left truncate">🩸 ${c.ailment} (${label})</button>
-                    <button onclick="assignAilment(${e.id},${c.id},'')" class="bg-gray-600 px-2 rounded text-xs">✕</button>
-                </div>`;
-            }
-            return `<select onchange="assignAilment(${e.id},${c.id},this.value)" class="bg-gray-900 p-1 rounded text-xs w-full">
-                <option value="">Assign Ailment</option>
-                ${ailmentLibrary.map(a => `<option value="${a.name}">${a.name} (${a.damage})</option>`).join('')}
-            </select>`;
+            if (!c.ailments) c.ailments = [];
+            const pills = c.ailments.map((entry, idx) => {
+                const ail = ailmentLibrary.find(a => a.name === entry.name);
+                const dmgLabel = ail ? (ail.damage === 'none' ? 'no dmg' : ail.damage) : '?';
+                return '<div class="flex gap-1 w-full">'
+                    + '<button onclick="rollAilmentDamage(' + e.id + ',' + c.id + ',' + idx + ')" class="bg-purple-900 p-1 rounded text-xs flex-1 text-left truncate">🩸 ' + entry.name + ' (' + dmgLabel + ', ' + entry.roundsLeft + 'rds)</button>'
+                    + '<button onclick="removeAilment(' + e.id + ',' + c.id + ',' + idx + ')" class="bg-gray-600 px-2 rounded text-xs">✕</button>'
+                    + '</div>';
+            }).join('');
+            const dropdown = '<select onchange="assignAilment(' + e.id + ',' + c.id + ',this.value);this.value='';" class="bg-gray-900 p-1 rounded text-xs w-full mt-1">'
+                + '<option value="">+ Assign Ailment</option>'
+                + ailmentLibrary.map(a => '<option value="' + a.name + '">' + a.name + ' (' + a.damage + ')</option>').join('')
+                + '</select>';
+            return '<div class="space-y-1">' + pills + dropdown + '</div>';
         }
 
         // ── Encounters ───────────────────────────────────────────────────
@@ -509,7 +526,7 @@
                         xp: level * 10 + 5, hp: finalHp, maxHp: finalHp,
                         ac: level + 10, perception: level + 2, init: 0,
                         type: 'npc', isBoss: pendingNPC.isBoss,
-                        weapon: null, ailment: null, roundsLeft: null,
+                        weapon: null, ailments: [],
                         resistance: pendingNPC.resistance
                     });
                     save(); renderEncounters();
@@ -521,7 +538,7 @@
         function addPlayerToEncounter(eId, pName) {
             const e = encounters.find(en => en.id === eId);
             if (e) {
-                e.combatants.push({ id: Date.now(), name: pName, init: 0, type: 'player', ailment: null, roundsLeft: null });
+                e.combatants.push({ id: Date.now(), name: pName, init: 0, type: 'player', ailments: [] });
                 save(); renderEncounters();
             }
         }
