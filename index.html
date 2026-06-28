@@ -252,6 +252,131 @@
         let weapons      = JSON.parse(localStorage.getItem('dmm_weapons'))      || [];
         let encounters   = JSON.parse(localStorage.getItem('dmm_encounters'))   || [];
 
+        // ── D&D 5e Defaults (loaded once if library is empty) ─────────────
+        const DEFAULT_WEAPONS = [
+            // Simple Melee
+            { id: 1001, name: 'Club',        count: '1', type: '4',  bonus: '0' },
+            { id: 1002, name: 'Dagger',      count: '1', type: '4',  bonus: '0' },
+            { id: 1003, name: 'Greatclub',   count: '1', type: '8',  bonus: '0' },
+            { id: 1004, name: 'Handaxe',     count: '1', type: '6',  bonus: '0' },
+            { id: 1005, name: 'Javelin',     count: '1', type: '6',  bonus: '0' },
+            { id: 1006, name: 'Light Hammer',count: '1', type: '4',  bonus: '0' },
+            { id: 1007, name: 'Mace',        count: '1', type: '6',  bonus: '0' },
+            { id: 1008, name: 'Quarterstaff',count: '1', type: '6',  bonus: '0' },
+            { id: 1009, name: 'Spear',       count: '1', type: '6',  bonus: '0' },
+            // Simple Ranged
+            { id: 1010, name: 'Shortbow',    count: '1', type: '6',  bonus: '0' },
+            { id: 1011, name: 'Light Crossbow', count: '1', type: '8', bonus: '0' },
+            { id: 1012, name: 'Sling',       count: '1', type: '4',  bonus: '0' },
+            // Martial Melee
+            { id: 1013, name: 'Battleaxe',   count: '1', type: '8',  bonus: '0' },
+            { id: 1014, name: 'Flail',       count: '1', type: '8',  bonus: '0' },
+            { id: 1015, name: 'Glaive',      count: '1', type: '10', bonus: '0' },
+            { id: 1016, name: 'Greataxe',    count: '1', type: '12', bonus: '0' },
+            { id: 1017, name: 'Greatsword',  count: '2', type: '6',  bonus: '0' },
+            { id: 1018, name: 'Longsword',   count: '1', type: '8',  bonus: '0' },
+            { id: 1019, name: 'Maul',        count: '2', type: '6',  bonus: '0' },
+            { id: 1020, name: 'Rapier',      count: '1', type: '8',  bonus: '0' },
+            { id: 1021, name: 'Shortsword',  count: '1', type: '6',  bonus: '0' },
+            { id: 1022, name: 'War Pick',    count: '1', type: '8',  bonus: '0' },
+            { id: 1023, name: 'Warhammer',   count: '1', type: '8',  bonus: '0' },
+            // Martial Ranged
+            { id: 1024, name: 'Hand Crossbow', count: '1', type: '6', bonus: '0' },
+            { id: 1025, name: 'Longbow',     count: '1', type: '8',  bonus: '0' },
+        ];
+
+        const DEFAULT_AILMENTS = [
+            // Damaging conditions
+            { name: 'Poison',           duration: '3', damage: '1d4' },
+            { name: 'Acid Burn',        duration: '2', damage: '1d6' },
+            { name: 'Bleeding',         duration: '3', damage: '1d4' },
+            { name: 'Fire (On Fire)',   duration: '2', damage: '1d6' },
+            { name: 'Necrotic Rot',     duration: '3', damage: '1d6' },
+            { name: 'Lightning Shock',  duration: '1', damage: '1d6' },
+            { name: 'Frostbite',        duration: '2', damage: '1d4' },
+            // Non-damaging status conditions (for tracking)
+            { name: 'Blinded',          duration: '2', damage: 'none' },
+            { name: 'Charmed',          duration: '2', damage: 'none' },
+            { name: 'Deafened',         duration: '2', damage: 'none' },
+            { name: 'Frightened',       duration: '2', damage: 'none' },
+            { name: 'Grappled',         duration: '1', damage: 'none' },
+            { name: 'Incapacitated',    duration: '1', damage: 'none' },
+            { name: 'Paralyzed',        duration: '2', damage: 'none' },
+            { name: 'Poisoned',         duration: '3', damage: 'none' },
+            { name: 'Prone',            duration: '1', damage: 'none' },
+            { name: 'Restrained',       duration: '2', damage: 'none' },
+            { name: 'Stunned',          duration: '1', damage: 'none' },
+            { name: 'Unconscious',      duration: '2', damage: 'none' },
+            { name: 'Exhaustion Lvl 1', duration: '3', damage: 'none' },
+        ];
+
+        const DEFAULT_NPCS = [
+            // CR 0
+            { name: 'Commoner',       isBoss: false, resistance: 'None' },
+            { name: 'Rat',            isBoss: false, resistance: 'None' },
+            { name: 'Raven',          isBoss: false, resistance: 'None' },
+            // CR 1/8
+            { name: 'Bandit',         isBoss: false, resistance: 'None' },
+            { name: 'Cultist',        isBoss: false, resistance: 'None' },
+            { name: 'Guard',          isBoss: false, resistance: 'None' },
+            { name: 'Kobold',         isBoss: false, resistance: 'None' },
+            { name: 'Mastiff',        isBoss: false, resistance: 'None' },
+            { name: 'Merfolk',        isBoss: false, resistance: 'None' },
+            // CR 1/4
+            { name: 'Acolyte',        isBoss: false, resistance: 'None' },
+            { name: 'Goblin',         isBoss: false, resistance: 'None' },
+            { name: 'Skeleton',       isBoss: false, resistance: 'Bludgeoning' },
+            { name: 'Wolf',           isBoss: false, resistance: 'None' },
+            { name: 'Zombie',         isBoss: false, resistance: 'None' },
+            // CR 1/2
+            { name: 'Black Bear',     isBoss: false, resistance: 'None' },
+            { name: 'Crocodile',      isBoss: false, resistance: 'None' },
+            { name: 'Hobgoblin',      isBoss: false, resistance: 'None' },
+            { name: 'Orc',            isBoss: false, resistance: 'None' },
+            { name: 'Scout',          isBoss: false, resistance: 'None' },
+            { name: 'Shadow',         isBoss: false, resistance: 'Fire' },
+            // CR 1
+            { name: 'Bugbear',        isBoss: false, resistance: 'None' },
+            { name: 'Dire Wolf',      isBoss: false, resistance: 'None' },
+            { name: 'Giant Spider',   isBoss: false, resistance: 'Poison' },
+            { name: 'Ghoul',          isBoss: false, resistance: 'None' },
+            { name: 'Specter',        isBoss: false, resistance: 'Fire' },
+            // CR 2
+            { name: 'Bandit Captain', isBoss: false, resistance: 'None' },
+            { name: 'Berserker',      isBoss: false, resistance: 'None' },
+            { name: 'Gargoyle',       isBoss: false, resistance: 'Pierce' },
+            { name: 'Ghast',          isBoss: false, resistance: 'None' },
+            { name: 'Ogre',           isBoss: false, resistance: 'None' },
+            { name: 'Werewolf',       isBoss: false, resistance: 'Slashing' },
+            // CR 3
+            { name: 'Knight',         isBoss: false, resistance: 'None' },
+            { name: 'Manticore',      isBoss: false, resistance: 'None' },
+            { name: 'Minotaur',       isBoss: false, resistance: 'None' },
+            { name: 'Mummy',          isBoss: false, resistance: 'Fire' },
+            { name: 'Vampire Spawn',  isBoss: false, resistance: 'None' },
+            { name: 'Wight',          isBoss: false, resistance: 'None' },
+            // CR 4
+            { name: 'Banshee',        isBoss: false, resistance: 'None' },
+            { name: 'Ettin',          isBoss: false, resistance: 'None' },
+            { name: 'Wereboar',       isBoss: false, resistance: 'Slashing' },
+            // CR 5
+            { name: 'Gladiator',      isBoss: false, resistance: 'None' },
+            { name: 'Troll',          isBoss: false, resistance: 'None' },
+            { name: 'Wraith',         isBoss: false, resistance: 'Fire' },
+            // Boss-tier
+            { name: 'Adult Red Dragon',  isBoss: true,  resistance: 'Fire' },
+            { name: 'Adult Blue Dragon', isBoss: true,  resistance: 'Electricity' },
+            { name: 'Lich',              isBoss: true,  resistance: 'Poison' },
+            { name: 'Vampire',           isBoss: true,  resistance: 'None' },
+            { name: 'Beholder',          isBoss: true,  resistance: 'None' },
+            { name: 'Mindflayer',        isBoss: true,  resistance: 'None' },
+            { name: 'Tarrasque',         isBoss: true,  resistance: 'Fire' },
+        ];
+
+        if (weapons.length === 0)      { weapons = DEFAULT_WEAPONS.map(w => ({...w})); save(); }
+        if (ailmentLibrary.length === 0){ ailmentLibrary = DEFAULT_AILMENTS.map(a => ({...a})); save(); }
+        if (npcLibrary.length === 0)   { npcLibrary = DEFAULT_NPCS.map(n => ({...n})); save(); }
+
         let pendingNPC = null, pendingWeapon = null;
         let expandedEncounters = new Set(), editingEncounterName = new Set(), editingInit = new Set();
         let toastTimeout = null;
