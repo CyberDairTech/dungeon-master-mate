@@ -436,7 +436,7 @@
         }
 
         // ── Ailment in encounter ─────────────────────────────────────────
-        function assignAilment(eId, cId, ailName) {
+        function assignAilment(eId, cId, ailName, selectEl) {
             if (!ailName) return;
             const e = encounters.find(en => en.id === eId);
             const c = e?.combatants.find(co => co.id === cId);
@@ -493,15 +493,30 @@
             const pills = c.ailments.map((entry, idx) => {
                 const ail = ailmentLibrary.find(a => a.name === entry.name);
                 const dmgLabel = ail ? (ail.damage === 'none' ? 'no dmg' : ail.damage) : '?';
-                return '<div class="flex gap-1 w-full">'
-                    + '<button onclick="rollAilmentDamage(' + e.id + ',' + c.id + ',' + idx + ')" class="bg-purple-900 p-1 rounded text-xs flex-1 text-left truncate">🩸 ' + entry.name + ' (' + dmgLabel + ', ' + entry.roundsLeft + 'rds)</button>'
-                    + '<button onclick="removeAilment(' + e.id + ',' + c.id + ',' + idx + ')" class="bg-gray-600 px-2 rounded text-xs">✕</button>'
-                    + '</div>';
+                return [
+                    '<div class="flex gap-1 w-full">',
+                    '<button onclick="rollAilmentDamage(', e.id, ',', c.id, ',', idx, ')"',
+                    ' class="bg-purple-900 p-1 rounded text-xs flex-1 text-left truncate">',
+                    '&#x1FA78; ', entry.name, ' (', dmgLabel, ', ', entry.roundsLeft, 'rds)</button>',
+                    '<button onclick="removeAilment(', e.id, ',', c.id, ',', idx, ')"',
+                    ' class="bg-gray-600 px-2 rounded text-xs">&#x2715;</button>',
+                    '</div>'
+                ].join('');
             }).join('');
-            const dropdown = '<select onchange="assignAilment(' + e.id + ',' + c.id + ',this.value);this.value='';" class="bg-gray-900 p-1 rounded text-xs w-full mt-1">'
-                + '<option value="">+ Assign Ailment</option>'
-                + ailmentLibrary.map(a => '<option value="' + a.name + '">' + a.name + ' (' + a.damage + ')</option>').join('')
-                + '</select>';
+
+            const opts = ailmentLibrary.map(a =>
+                '<option value="' + a.name.replace(/"/g, '&quot;') + '">' + a.name + ' (' + a.damage + ')</option>'
+            ).join('');
+
+            const dropdown = [
+                '<select id="ail-sel-', e.id, '-', c.id, '"',
+                ' onchange="assignAilment(', e.id, ',', c.id, ',this.value);this.selectedIndex=0;"',
+                ' class="bg-gray-900 p-1 rounded text-xs w-full mt-1">',
+                '<option value="">+ Assign Ailment</option>',
+                opts,
+                '</select>'
+            ].join('');
+
             return '<div class="space-y-1">' + pills + dropdown + '</div>';
         }
 
