@@ -1,0 +1,643 @@
+<!-- DMM: Dungeon Master Mate - PWA Edition 2026-06-28 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="DMM">
+    <meta name="theme-color" content="#1f2937">
+    <title>DMM: Dungeon Master Mate</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Inline SVG icons as data URIs for apple touch icon -->
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%231f2937'/%3E%3Ctext x='96' y='130' font-size='100' text-anchor='middle' fill='%23eab308'%3E⚔%3C/text%3E%3C/svg%3E">
+
+    <style>
+        .page { display: none; }
+        .page.active-page { display: block; }
+        .nav-btn.nav-active { border-left: 4px solid #eab308; background-color: #374151; }
+        /* Safe area insets for notched phones */
+        body { padding-bottom: env(safe-area-inset-bottom); }
+        #bottom-bar { padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
+        /* Prevent text size adjustment on rotate */
+        html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+        /* Smooth tap highlight removal */
+        * { -webkit-tap-highlight-color: transparent; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col">
+
+    <!-- ── Modals ── -->
+    <div id="npc-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 w-full max-w-sm">
+            <h3 class="text-lg font-bold mb-4">Enter NPC Level</h3>
+            <input id="modal-level-input" type="number" value="1" class="w-full bg-gray-900 border border-gray-600 p-2 rounded mb-4">
+            <div class="flex justify-end gap-2">
+                <button onclick="closeModal('npc-modal')" class="px-4 py-2 bg-gray-600 rounded">Cancel</button>
+                <button onclick="confirmNPCLevel()" class="px-4 py-2 bg-blue-600 rounded font-bold">Add NPC</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirm-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 w-full max-w-sm">
+            <h3 class="text-lg font-bold mb-4">Weapon Exists</h3>
+            <p class="mb-4 text-gray-300">A weapon with this name already exists. Do you want to overwrite it with the new values?</p>
+            <div class="flex justify-end gap-2">
+                <button onclick="closeModal('confirm-modal')" class="px-4 py-2 bg-gray-600 rounded">Cancel</button>
+                <button onclick="overwriteWeapon()" class="px-4 py-2 bg-yellow-600 rounded font-bold">Overwrite</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="error-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-gray-800 p-6 rounded-lg border border-red-700 w-full max-w-sm">
+            <h3 class="text-lg font-bold mb-4 text-red-500">Weapon In Use</h3>
+            <p id="error-msg" class="mb-4 text-gray-300"></p>
+            <div class="flex justify-end">
+                <button onclick="closeModal('error-modal')" class="px-4 py-2 bg-red-700 rounded font-bold">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="roll-toast" class="fixed top-4 left-4 right-4 bg-yellow-600 text-white p-4 rounded shadow-lg hidden z-50 font-bold text-sm text-center"></div>
+
+    <!-- ── Top bar ── -->
+    <header class="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center sticky top-0 z-40"
+            style="padding-top: max(0.75rem, env(safe-area-inset-top))">
+        <span class="text-xl font-bold text-yellow-500 flex-1">⚔ DMM</span>
+        <span id="header-page-title" class="text-gray-400 text-sm mr-3">Home</span>
+    </header>
+
+    <!-- ── Main content ── -->
+    <main class="flex-1 p-4 overflow-y-auto pb-24">
+
+        <!-- HOME -->
+        <div id="home" class="page active-page">
+            <h2 class="text-2xl font-bold mb-6">Welcome to DMM</h2>
+            <div class="space-y-4">
+                <section class="bg-gray-800 rounded border border-gray-700 overflow-hidden">
+                    <button onclick="toggleSection('guide-1')" class="w-full p-4 text-left font-bold text-yellow-500 flex justify-between items-center">
+                        How to Get Started <span>▼</span>
+                    </button>
+                    <div id="guide-1" class="p-4 pt-0 text-gray-300">
+                        <ul class="space-y-3 list-decimal list-inside text-sm">
+                            <li><strong>Players:</strong> Add names to the Party list in the Players tab.</li>
+                            <li><strong>Weapons:</strong> Define damage dice and bonuses in the Weapons tab.</li>
+                            <li><strong>NPCs:</strong> Save creatures in the NPC Library.</li>
+                            <li><strong>Ailments:</strong> Save status effects in the Ailment Library.</li>
+                            <li><strong>Encounters:</strong> Start new encounters and pull your saved data in.</li>
+                        </ul>
+                    </div>
+                </section>
+                <section class="bg-gray-800 rounded border border-gray-700 overflow-hidden">
+                    <button onclick="toggleSection('guide-2')" class="w-full p-4 text-left font-bold text-yellow-500 flex justify-between items-center">
+                        Combat Encounter Guide <span>▼</span>
+                    </button>
+                    <div id="guide-2" class="p-4 pt-0 text-gray-300 hidden">
+                        <ul class="space-y-3 list-disc list-inside text-sm">
+                            <li><strong>Initiative:</strong> Tap the init box to enter a number. Combatants auto-sort. Tap ✎ to edit.</li>
+                            <li><strong>Assign Weapons:</strong> Use the dropdown on an NPC. Tapping the button rolls damage.</li>
+                            <li><strong>Assign Ailments:</strong> Use the Ailment dropdown. Tapping rolls damage, subtracts HP, and ticks down rounds.</li>
+                            <li><strong>Health Tracking:</strong> Use -1 and -5 buttons. HP cannot drop below zero.</li>
+                            <li><strong>Defeat:</strong> 0 HP marks the NPC DEAD and tallies XP.</li>
+                        </ul>
+                    </div>
+                </section>
+                <section class="bg-gray-800 rounded border border-gray-700 overflow-hidden">
+                    <button onclick="toggleSection('guide-install')" class="w-full p-4 text-left font-bold text-yellow-500 flex justify-between items-center">
+                        📲 Install as App <span>▼</span>
+                    </button>
+                    <div id="guide-install" class="p-4 pt-0 text-gray-300 hidden">
+                        <p class="text-sm mb-3">DMM is a PWA — install it on your home screen for an app-like experience with offline support.</p>
+                        <p class="text-sm font-bold text-yellow-400 mb-1">iPhone / iPad (Safari):</p>
+                        <ol class="list-decimal list-inside text-sm space-y-1 mb-3">
+                            <li>Tap the <strong>Share</strong> button (box with arrow) in Safari</li>
+                            <li>Scroll down and tap <strong>Add to Home Screen</strong></li>
+                            <li>Tap <strong>Add</strong></li>
+                        </ol>
+                        <p class="text-sm font-bold text-yellow-400 mb-1">Android (Chrome):</p>
+                        <ol class="list-decimal list-inside text-sm space-y-1">
+                            <li>Tap the <strong>⋮ menu</strong> in Chrome</li>
+                            <li>Tap <strong>Add to Home screen</strong></li>
+                            <li>Tap <strong>Add</strong></li>
+                        </ol>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <!-- PLAYERS -->
+        <div id="players" class="page">
+            <h2 class="text-2xl font-bold mb-6">Players</h2>
+            <div class="bg-gray-800 p-4 rounded border border-gray-700 mb-6 space-y-2">
+                <input id="p-new-name" placeholder="Player Name" class="p-2 bg-gray-900 rounded border border-gray-700 w-full">
+                <button onclick="addPlayerToLibrary()" class="w-full bg-blue-700 py-2 rounded font-bold">Add to Party</button>
+            </div>
+            <div id="player-list" class="space-y-2"></div>
+        </div>
+
+        <!-- WEAPONS -->
+        <div id="weapons" class="page">
+            <h2 class="text-2xl font-bold mb-6">Weapons</h2>
+            <div class="bg-gray-800 p-4 rounded border border-gray-700 mb-6 space-y-2">
+                <input id="w-name" placeholder="Weapon Name" class="p-2 bg-gray-900 rounded border border-gray-700 w-full">
+                <div class="flex gap-2">
+                    <select id="w-dice-count" class="p-2 bg-gray-900 rounded border border-gray-700 flex-1">
+                        <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+                    </select>
+                    <select id="w-dice-type" class="p-2 bg-gray-900 rounded border border-gray-700 flex-1">
+                        <option value="4">D4</option><option value="6">D6</option><option value="8">D8</option><option value="10">D10</option><option value="12">D12</option>
+                    </select>
+                    <input id="w-bonus" type="number" placeholder="Bonus" class="p-2 bg-gray-900 rounded border border-gray-700 flex-1">
+                </div>
+                <button onclick="addWeapon()" class="w-full bg-green-700 py-2 rounded font-bold">Add Weapon</button>
+            </div>
+            <div id="weapon-list" class="space-y-2"></div>
+        </div>
+
+        <!-- NPC LIBRARY -->
+        <div id="npcs" class="page">
+            <h2 class="text-2xl font-bold mb-6">NPC Library</h2>
+            <div class="bg-gray-800 p-4 rounded border border-gray-700 mb-6 space-y-2">
+                <input id="lib-name" placeholder="NPC Name" class="p-2 bg-gray-900 rounded border border-gray-700 w-full">
+                <select id="lib-resistance" class="w-full bg-gray-900 border border-gray-700 p-2 rounded">
+                    <option value="None">No Resistance</option>
+                    <option value="Fire">Fire</option><option value="Ice">Ice</option><option value="Water">Water</option><option value="Air">Air</option>
+                    <option value="Pierce">Pierce</option><option value="Bludgeoning">Bludgeoning</option><option value="Slashing">Slashing</option>
+                    <option value="Poison">Poison</option><option value="Electricity">Electricity</option>
+                </select>
+                <label class="flex items-center gap-2"><input id="lib-is-boss" type="checkbox"> <span>Is Boss?</span></label>
+                <button onclick="addLibNPC()" class="w-full bg-purple-700 py-2 rounded font-bold">Add to Library</button>
+            </div>
+            <div id="lib-list" class="space-y-2"></div>
+        </div>
+
+        <!-- AILMENT LIBRARY -->
+        <div id="ailments" class="page">
+            <h2 class="text-2xl font-bold mb-6">Ailment Library</h2>
+            <div class="bg-gray-800 p-4 rounded border border-gray-700 mb-6 space-y-2">
+                <input id="ail-name" placeholder="Ailment Name" class="p-2 bg-gray-900 rounded border border-gray-700 w-full">
+                <div class="flex gap-2">
+                    <select id="ail-dur" class="bg-gray-900 border border-gray-700 p-2 rounded flex-1">
+                        <option value="1">1 Round</option><option value="2">2 Rounds</option><option value="3">3 Rounds</option>
+                    </select>
+                    <select id="ail-dmg" class="bg-gray-900 border border-gray-700 p-2 rounded flex-1">
+                        <option value="none">No Damage</option><option value="1d4">1d4</option><option value="1d6">1d6</option>
+                    </select>
+                </div>
+                <button onclick="addAilment()" class="w-full bg-red-700 py-2 rounded font-bold">Add Ailment</button>
+            </div>
+            <div id="ailment-list" class="space-y-2"></div>
+        </div>
+
+        <!-- ENCOUNTERS -->
+        <div id="encounters" class="page">
+            <h2 class="text-2xl font-bold mb-4">Encounters</h2>
+            <button onclick="createEncounter()" class="mb-4 bg-blue-700 px-4 py-2 rounded font-bold w-full">+ New Encounter</button>
+            <div id="encounter-list" class="space-y-4"></div>
+        </div>
+
+        <!-- SETTINGS / DEV LOG -->
+        <div id="devlog" class="page">
+            <h2 class="text-2xl font-bold mb-6">Settings & Data</h2>
+            <div class="bg-gray-800 p-4 rounded border border-gray-700 mb-6 space-y-2">
+                <button onclick="exportData()" class="w-full bg-green-700 px-4 py-3 rounded font-bold">📤 Export Backup</button>
+                <input type="file" id="import-file" class="hidden" onchange="importData(event)">
+                <button onclick="document.getElementById('import-file').click()" class="w-full bg-yellow-700 px-4 py-3 rounded font-bold">📥 Import Backup</button>
+            </div>
+            <div class="space-y-2 text-gray-400 text-sm">
+                <div class="bg-gray-800 p-2 rounded">2026-06-28: PWA edition — offline support, home screen install.</div>
+                <div class="bg-gray-800 p-2 rounded">2026-06-27: Ailment round countdown with auto-expiry.</div>
+                <div class="bg-gray-800 p-2 rounded">2026-06-27: Added Ailment assignment to encounter combatants.</div>
+                <div class="bg-gray-800 p-2 rounded">2026-06-24: Added Ailment Library and backup/restore.</div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- ── Bottom tab bar ── -->
+    <div id="bottom-bar" class="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 flex z-40 pt-2">
+        <button onclick="showPage('home',this)" data-label="Home" class="tab-btn flex-1 flex flex-col items-center py-1 text-yellow-400">
+            <span class="text-xl">🏠</span><span class="text-xs">Home</span>
+        </button>
+        <button onclick="showPage('players',this)" data-label="Players" class="tab-btn flex-1 flex flex-col items-center py-1 text-gray-400">
+            <span class="text-xl">👥</span><span class="text-xs">Players</span>
+        </button>
+        <button onclick="showPage('npcs',this)" data-label="NPC Library" class="tab-btn flex-1 flex flex-col items-center py-1 text-gray-400">
+            <span class="text-xl">👹</span><span class="text-xs">NPCs</span>
+        </button>
+        <button onclick="showPage('ailments',this)" data-label="Ailment Library" class="tab-btn flex-1 flex flex-col items-center py-1 text-gray-400">
+            <span class="text-xl">🩸</span><span class="text-xs">Ailments</span>
+        </button>
+        <button onclick="showPage('weapons',this)" data-label="Weapons" class="tab-btn flex-1 flex flex-col items-center py-1 text-gray-400">
+            <span class="text-xl">🗡️</span><span class="text-xs">Weapons</span>
+        </button>
+        <button onclick="showPage('encounters',this)" data-label="Encounters" class="tab-btn flex-1 flex flex-col items-center py-1 text-gray-400">
+            <span class="text-xl">⚔️</span><span class="text-xs">Encounter</span>
+        </button>
+        <button onclick="showPage('devlog',this)" data-label="Settings" class="tab-btn flex-1 flex flex-col items-center py-1 text-gray-400">
+            <span class="text-xl">⚙️</span><span class="text-xs">Settings</span>
+        </button>
+    </div>
+
+    <!-- ── App Script ── -->
+    <script>
+        let npcLibrary   = JSON.parse(localStorage.getItem('dmm_npcLibrary'))   || [];
+        let ailmentLibrary = JSON.parse(localStorage.getItem('dmm_ailmentLibrary')) || [];
+        let players      = JSON.parse(localStorage.getItem('dmm_players'))      || [];
+        let weapons      = JSON.parse(localStorage.getItem('dmm_weapons'))      || [];
+        let encounters   = JSON.parse(localStorage.getItem('dmm_encounters'))   || [];
+
+        let pendingNPC = null, pendingWeapon = null;
+        let expandedEncounters = new Set(), editingEncounterName = new Set(), editingInit = new Set();
+        let toastTimeout = null;
+
+        // ── Persistence ──────────────────────────────────────────────────
+        function save() {
+            localStorage.setItem('dmm_npcLibrary',    JSON.stringify(npcLibrary));
+            localStorage.setItem('dmm_ailmentLibrary',JSON.stringify(ailmentLibrary));
+            localStorage.setItem('dmm_players',       JSON.stringify(players));
+            localStorage.setItem('dmm_weapons',       JSON.stringify(weapons));
+            localStorage.setItem('dmm_encounters',    JSON.stringify(encounters));
+        }
+
+        function exportData() {
+            const data = { npcLibrary, ailmentLibrary, players, weapons, encounters };
+            const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'dmm_backup_' + new Date().toISOString().slice(0, 10) + '.json';
+            a.click();
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = JSON.parse(e.target.result);
+                npcLibrary     = data.npcLibrary     || [];
+                ailmentLibrary = data.ailmentLibrary || [];
+                players        = data.players        || [];
+                weapons        = data.weapons        || [];
+                encounters     = data.encounters     || [];
+                save(); location.reload();
+            };
+            reader.readAsText(file);
+        }
+
+        // ── Navigation ───────────────────────────────────────────────────
+        function showPage(pageId, btnEl) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active-page'));
+            document.getElementById(pageId).classList.add('active-page');
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                b.classList.remove('text-yellow-400');
+                b.classList.add('text-gray-400');
+            });
+            if (btnEl) {
+                btnEl.classList.remove('text-gray-400');
+                btnEl.classList.add('text-yellow-400');
+                document.getElementById('header-page-title').textContent = btnEl.dataset.label || '';
+            }
+            window.scrollTo(0, 0);
+        }
+
+        function toggleSection(id) {
+            document.getElementById(id).classList.toggle('hidden');
+        }
+
+        // ── Modals ───────────────────────────────────────────────────────
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+        // ── Toast ────────────────────────────────────────────────────────
+        function showToast(msg) {
+            const t = document.getElementById('roll-toast');
+            if (toastTimeout) clearTimeout(toastTimeout);
+            t.innerText = msg;
+            t.classList.remove('hidden');
+            toastTimeout = setTimeout(() => t.classList.add('hidden'), 5000);
+        }
+
+        // ── Weapons ──────────────────────────────────────────────────────
+        function addWeapon() {
+            const name = document.getElementById('w-name').value.trim();
+            if (!name) return;
+            const newWeapon = {
+                id: Date.now(), name,
+                count: document.getElementById('w-dice-count').value,
+                type:  document.getElementById('w-dice-type').value,
+                bonus: document.getElementById('w-bonus').value || 0
+            };
+            const existing = weapons.find(w => w.name.toLowerCase() === name.toLowerCase());
+            if (existing) { pendingWeapon = newWeapon; document.getElementById('confirm-modal').classList.remove('hidden'); }
+            else { weapons.push(newWeapon); save(); renderWeapons(); renderEncounters(); }
+        }
+
+        function overwriteWeapon() {
+            if (pendingWeapon) {
+                weapons = weapons.map(w => w.name.toLowerCase() === pendingWeapon.name.toLowerCase() ? pendingWeapon : w);
+                save(); renderWeapons(); renderEncounters();
+                closeModal('confirm-modal'); pendingWeapon = null;
+            }
+        }
+
+        function removeWeapon(id) {
+            const weapon = weapons.find(w => w.id === id);
+            if (!weapon) return;
+            const usingEncounter = encounters.find(e => e.combatants.some(c => c.weapon?.toLowerCase() === weapon.name.toLowerCase()));
+            if (usingEncounter) {
+                document.getElementById('error-msg').innerText = `"${weapon.name}" is used in "${usingEncounter.name}". Remove it from that encounter first.`;
+                document.getElementById('error-modal').classList.remove('hidden');
+                return;
+            }
+            weapons = weapons.filter(w => w.id !== id);
+            save(); renderWeapons(); renderEncounters();
+        }
+
+        function rollDamage(wName) {
+            const w = weapons.find(we => we.name.toLowerCase() === wName.toLowerCase());
+            if (!w) return;
+            let total = 0;
+            for (let i = 0; i < parseInt(w.count); i++) total += Math.floor(Math.random() * parseInt(w.type)) + 1;
+            total += parseInt(w.bonus) || 0;
+            showToast(`⚔ ${w.name}: ${total} dmg (${w.count}d${w.type}+${w.bonus})`);
+        }
+
+        function renderWeapons() {
+            document.getElementById('weapon-list').innerHTML = weapons.map(w => `
+                <div class="bg-gray-800 p-3 rounded border border-gray-700 flex justify-between items-center">
+                    <span class="text-sm"><strong>${w.name}</strong> (${w.count}D${w.type}+${w.bonus})</span>
+                    <button onclick="removeWeapon(${w.id})" class="text-red-500 text-xs px-2 py-1">Remove</button>
+                </div>`).join('');
+        }
+
+        // ── Players ──────────────────────────────────────────────────────
+        function addPlayerToLibrary() {
+            const n = document.getElementById('p-new-name');
+            if (!n.value.trim()) return;
+            players.push({ id: Date.now(), name: n.value.trim() });
+            n.value = '';
+            save(); renderPlayers(); renderEncounters();
+        }
+
+        function renderPlayers() {
+            document.getElementById('player-list').innerHTML = players.map(p => `
+                <div class="bg-gray-800 p-3 rounded flex justify-between items-center">
+                    <span>${p.name}</span>
+                    <button onclick="players=players.filter(pl=>pl.id!==${p.id});save();renderPlayers();renderEncounters();" class="text-red-500 text-sm px-2">Remove</button>
+                </div>`).join('');
+        }
+
+        // ── NPC Library ──────────────────────────────────────────────────
+        function addLibNPC() {
+            const n = document.getElementById('lib-name').value.trim();
+            const boss = document.getElementById('lib-is-boss').checked;
+            const resistance = document.getElementById('lib-resistance').value;
+            if (!n) return;
+            npcLibrary.push({ name: n, isBoss: boss, resistance });
+            save(); renderLibNPCs(); renderEncounters();
+            document.getElementById('lib-name').value = '';
+            document.getElementById('lib-resistance').value = 'None';
+            document.getElementById('lib-is-boss').checked = false;
+        }
+
+        function renderLibNPCs() {
+            document.getElementById('lib-list').innerHTML = npcLibrary.map((npc, i) => `
+                <div class="bg-gray-800 p-3 rounded flex justify-between items-center">
+                    <span class="text-sm">${npc.name}
+                        ${npc.isBoss ? '<span class="text-red-500 ml-1">[BOSS]</span>' : ''}
+                        ${npc.resistance !== 'None' ? '<span class="text-blue-400 text-xs ml-1">Res: ' + npc.resistance + '</span>' : ''}
+                    </span>
+                    <button onclick="npcLibrary.splice(${i},1);save();renderLibNPCs();renderEncounters();" class="text-red-500 text-xs px-2 py-1">Remove</button>
+                </div>`).join('');
+        }
+
+        // ── Ailment Library ──────────────────────────────────────────────
+        function addAilment() {
+            const n = document.getElementById('ail-name').value.trim();
+            const d = document.getElementById('ail-dur').value;
+            const dmg = document.getElementById('ail-dmg').value;
+            if (!n) return;
+            ailmentLibrary.push({ name: n, duration: d, damage: dmg });
+            save(); renderAilmentLibrary();
+            document.getElementById('ail-name').value = '';
+        }
+
+        function renderAilmentLibrary() {
+            document.getElementById('ailment-list').innerHTML = ailmentLibrary.map((ail, idx) => `
+                <div class="bg-gray-800 p-3 rounded flex justify-between items-center text-sm">
+                    <span><strong>${ail.name}</strong> <span class="text-gray-400">(${ail.duration} rds, ${ail.damage})</span></span>
+                    <button onclick="ailmentLibrary.splice(${idx},1);save();renderAilmentLibrary();" class="text-red-500 px-2">Remove</button>
+                </div>`).join('');
+        }
+
+        // ── Ailment in encounter ─────────────────────────────────────────
+        function assignAilment(eId, cId, ailName) {
+            const e = encounters.find(en => en.id === eId);
+            const c = e?.combatants.find(co => co.id === cId);
+            if (!c) return;
+            const ail = ailmentLibrary.find(a => a.name === ailName);
+            c.ailment = ailName || null;
+            c.roundsLeft = ail ? parseInt(ail.duration) : null;
+            save(); renderEncounters();
+        }
+
+        function rollAilmentDamage(eId, cId, ailName) {
+            const e = encounters.find(en => en.id === eId);
+            const c = e?.combatants.find(co => co.id === cId);
+            const ail = ailmentLibrary.find(a => a.name === ailName);
+            if (!c || !ail) return;
+
+            const noDmg = ail.damage === 'none';
+            let total = 0;
+            if (!noDmg) {
+                const [countStr, typeStr] = ail.damage.split('d');
+                for (let i = 0; i < parseInt(countStr); i++) total += Math.floor(Math.random() * parseInt(typeStr)) + 1;
+            }
+
+            const newRounds = (c.roundsLeft ?? parseInt(ail.duration)) - 1;
+            const expired = newRounds <= 0;
+
+            if (!noDmg && c.type === 'npc') c.hp = Math.max(0, c.hp - total);
+            c.roundsLeft = expired ? null : newRounds;
+            c.ailment    = expired ? null : c.ailment;
+
+            save(); renderEncounters();
+
+            const dmgText = noDmg ? 'no damage' : `${total} dmg (${ail.damage})`;
+            showToast(`🩸 ${ail.name} on ${c.name}: ${dmgText}${expired ? ' — expired!' : ` — ${newRounds} rd${newRounds === 1 ? '' : 's'} left`}`);
+        }
+
+        function renderAilmentControl(e, c) {
+            const ail = ailmentLibrary.find(a => a.name === c.ailment);
+            if (c.ailment && ail) {
+                const rds = c.roundsLeft ?? ail.duration;
+                const label = ail.damage === 'none' ? `no dmg, ${rds}rds left` : `${ail.damage}, ${rds}rds left`;
+                return `<div class="flex gap-1 w-full">
+                    <button onclick="rollAilmentDamage(${e.id},${c.id},'${c.ailment.replace(/'/g,"\\'")}')" class="bg-purple-900 p-1 rounded text-xs flex-1 text-left truncate">🩸 ${c.ailment} (${label})</button>
+                    <button onclick="assignAilment(${e.id},${c.id},'')" class="bg-gray-600 px-2 rounded text-xs">✕</button>
+                </div>`;
+            }
+            return `<select onchange="assignAilment(${e.id},${c.id},this.value)" class="bg-gray-900 p-1 rounded text-xs w-full">
+                <option value="">Assign Ailment</option>
+                ${ailmentLibrary.map(a => `<option value="${a.name}">${a.name} (${a.damage})</option>`).join('')}
+            </select>`;
+        }
+
+        // ── Encounters ───────────────────────────────────────────────────
+        function createEncounter() {
+            const id = Date.now();
+            encounters.push({ id, name: 'Encounter ' + (encounters.length + 1), combatants: [] });
+            expandedEncounters.add(id);
+            editingEncounterName.add(id);
+            save(); renderEncounters();
+        }
+
+        function confirmNPCLevel() {
+            const level = parseInt(document.getElementById('modal-level-input').value) || 1;
+            if (pendingNPC) {
+                const e = encounters.find(en => en.id === pendingNPC.eId);
+                if (e) {
+                    const baseHp = level * 2 + 10;
+                    const finalHp = pendingNPC.isBoss ? baseHp * 2 : baseHp;
+                    e.combatants.push({
+                        id: Date.now(), name: pendingNPC.name, level,
+                        xp: level * 10 + 5, hp: finalHp, maxHp: finalHp,
+                        ac: level + 10, perception: level + 2, init: 0,
+                        type: 'npc', isBoss: pendingNPC.isBoss,
+                        weapon: null, ailment: null, roundsLeft: null,
+                        resistance: pendingNPC.resistance
+                    });
+                    save(); renderEncounters();
+                }
+            }
+            closeModal('npc-modal');
+        }
+
+        function addPlayerToEncounter(eId, pName) {
+            const e = encounters.find(en => en.id === eId);
+            if (e) {
+                e.combatants.push({ id: Date.now(), name: pName, init: 0, type: 'player', ailment: null, roundsLeft: null });
+                save(); renderEncounters();
+            }
+        }
+
+        function assignWeapon(eId, cId, weaponName) {
+            const c = encounters.find(en => en.id === eId)?.combatants.find(co => co.id === cId);
+            if (c) { c.weapon = weaponName; save(); renderEncounters(); }
+        }
+
+        function updateInit(eId, cId, val) {
+            const c = encounters.find(en => en.id === eId)?.combatants.find(co => co.id === cId);
+            if (c) { c.init = parseInt(val) || 0; editingInit.delete(cId); save(); renderEncounters(); }
+        }
+
+        function modifyHp(eId, cId, amount) {
+            const c = encounters.find(e => e.id === eId)?.combatants.find(co => co.id === cId);
+            if (c) { c.hp = Math.min(c.maxHp, Math.max(0, c.hp + amount)); save(); renderEncounters(); }
+        }
+
+        function saveEncounterName(eId, inputEl) {
+            const e = encounters.find(en => en.id === eId);
+            if (e) { e.name = inputEl.value; editingEncounterName.delete(eId); save(); renderEncounters(); }
+        }
+
+        function renderEncounters() {
+            document.getElementById('encounter-list').innerHTML = encounters.map(e => {
+                const sorted = [...e.combatants].sort((a, b) => b.init - a.init);
+                const earnedXP = e.combatants.reduce((s, c) => s + (c.type === 'npc' && c.hp === 0 ? (c.xp || 0) : 0), 0);
+                const totalXP  = e.combatants.reduce((s, c) => s + (c.type === 'npc' ? (c.xp || 0) : 0), 0);
+                const isExp = expandedEncounters.has(e.id);
+
+                return `<div class="bg-gray-800 p-4 rounded border border-gray-700">
+                    <div class="flex items-center gap-2 mb-2">
+                        <button onclick="expandedEncounters.has(${e.id})?expandedEncounters.delete(${e.id}):expandedEncounters.add(${e.id});renderEncounters();" class="text-yellow-500 font-bold text-lg w-6">${isExp ? '▼' : '▶'}</button>
+                        ${editingEncounterName.has(e.id)
+                            ? `<input id="ename-${e.id}" value="${e.name}" class="bg-gray-900 border border-gray-600 rounded p-1 flex-1 text-sm">
+                               <button onclick="saveEncounterName(${e.id},document.getElementById('ename-${e.id}'))" class="bg-green-700 px-2 py-1 rounded font-bold text-xs">Save</button>`
+                            : `<span class="flex-1 font-bold">${e.name}</span>`}
+                        <span class="text-xs font-mono ${totalXP > 0 && earnedXP === totalXP ? 'text-green-400' : 'text-yellow-400'}">XP ${earnedXP}/${totalXP}</span>
+                    </div>
+                    ${isExp ? `
+                    <div class="flex gap-2 mb-3">
+                        <select onchange="const n=npcLibrary.find(x=>x.name===this.value);if(n){pendingNPC={eId:${e.id},name:n.name,isBoss:n.isBoss,resistance:n.resistance};document.getElementById('npc-modal').classList.remove('hidden');}this.value='';" class="bg-gray-700 p-2 rounded text-sm flex-1">
+                            <option value="">+ NPC</option>${npcLibrary.map(n => `<option value="${n.name}">${n.name}</option>`).join('')}
+                        </select>
+                        <select onchange="if(this.value){addPlayerToEncounter(${e.id},this.value);this.value='';}" class="bg-gray-700 p-2 rounded text-sm flex-1">
+                            <option value="">+ Player</option>${players.map(p => `<option value="${p.name}">${p.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="space-y-2">${sorted.map(c => {
+                        const w = weapons.find(we => we.name.toLowerCase() === (c.weapon || '').toLowerCase());
+                        const isDead = c.type === 'npc' && c.hp === 0;
+                        return `<div class="bg-gray-700 p-2 rounded text-sm relative">
+                            ${isDead ? `<div class="absolute inset-0 bg-red-900/90 flex flex-col items-center justify-center font-black text-2xl tracking-widest z-10 rounded"><div>DEAD</div><div class="text-sm font-normal">XP: ${c.xp}</div></div>` : ''}
+                            <div class="flex justify-between items-center mb-2">
+                                <div class="flex items-center gap-2">
+                                    ${(c.init > 0 && !editingInit.has(c.id))
+                                        ? `<span class="w-10 text-center font-bold font-mono text-yellow-300 text-sm">${c.init}</span><button onclick="editingInit.add(${c.id});renderEncounters();" class="text-gray-500 text-xs">✎</button>`
+                                        : `<input type="number" placeholder="Init" onchange="updateInit(${e.id},${c.id},this.value)" class="w-14 bg-gray-900 p-1 text-center rounded font-mono border border-gray-600 text-sm">`}
+                                    <span class="font-bold">${c.name}${c.isBoss ? ' 👑' : ''}</span>
+                                </div>
+                                ${c.type === 'npc' ? `<div class="flex gap-1 items-center ${isDead ? 'opacity-40' : ''}">
+                                    <button onclick="modifyHp(${e.id},${c.id},-1)" class="bg-red-900 px-2 py-1 rounded font-bold">-1</button>
+                                    <button onclick="modifyHp(${e.id},${c.id},-5)" class="bg-red-900 px-2 py-1 rounded font-bold">-5</button>
+                                    <span class="font-mono font-bold text-sm pl-1">${c.hp}/${c.maxHp}</span>
+                                </div>` : ''}
+                            </div>
+                            ${c.type === 'npc' ? `
+                                <div class="text-xs text-gray-400 mb-2">AC ${c.ac} · Perc ${c.perception}${c.resistance !== 'None' ? ' · Res: ' + c.resistance : ''}</div>
+                                <div class="mb-2">${c.weapon
+                                    ? `<button onclick="rollDamage('${c.weapon}')" class="bg-blue-800 p-2 rounded text-xs w-full text-left">⚔ ${c.weapon} ${w ? '(' + w.count + 'D' + w.type + '+' + w.bonus + ')' : ''}</button>`
+                                    : `<select onchange="assignWeapon(${e.id},${c.id},this.value)" class="bg-gray-900 p-1 rounded text-xs w-full"><option value="">Assign Weapon</option>${weapons.map(w => `<option value="${w.name}">${w.name}</option>`).join('')}</select>`}
+                                </div>
+                                ${renderAilmentControl(e, c)}
+                            ` : renderAilmentControl(e, c)}
+                        </div>`;
+                    }).join('')}</div>` : ''}
+                </div>`;
+            }).join('');
+        }
+
+        // ── Init renders ─────────────────────────────────────────────────
+        renderWeapons(); renderPlayers(); renderLibNPCs(); renderAilmentLibrary(); renderEncounters();
+
+        // ── Service Worker registration ───────────────────────────────────
+        if ('serviceWorker' in navigator) {
+            const swCode = `
+const CACHE = 'dmm-v1';
+const ASSETS = [location.href];
+self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS))));
+self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))));
+self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).then(res => { const clone = res.clone(); caches.open(CACHE).then(c => c.put(e.request, clone)); return res; }))));
+            `.trim();
+            const blob = new Blob([swCode], { type: 'application/javascript' });
+            const swUrl = URL.createObjectURL(blob);
+            navigator.serviceWorker.register(swUrl).catch(() => {});
+        }
+
+        // ── Web App Manifest (injected dynamically) ───────────────────────
+        const manifest = {
+            name: 'Dungeon Master Mate',
+            short_name: 'DMM',
+            start_url: location.href,
+            display: 'standalone',
+            background_color: '#111827',
+            theme_color: '#1f2937',
+            icons: [{
+                src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%231f2937'/%3E%3Ctext x='96' y='130' font-size='100' text-anchor='middle' fill='%23eab308'%3E⚔%3C/text%3E%3C/svg%3E",
+                sizes: '192x192', type: 'image/svg+xml'
+            }]
+        };
+        const mBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+        const mUrl = URL.createObjectURL(mBlob);
+        const mLink = document.createElement('link');
+        mLink.rel = 'manifest'; mLink.href = mUrl;
+        document.head.appendChild(mLink);
+    </script>
+</body>
+</html>
