@@ -86,7 +86,7 @@
                     <div id="guide-1" class="p-4 pt-0 text-gray-300">
                         <ul class="space-y-3 list-decimal list-inside text-sm">
                             <li><strong>Players:</strong> Add names to the Party list in the Players tab.</li>
-                            <li><strong>Weapons:</strong> Define damage dice and bonuses in the Weapons tab.</li>
+                            <li><strong>NPC Library:</strong> SRD monsters load automatically with all their attacks. Add custom NPCs manually.</li>
                             <li><strong>NPCs:</strong> Save creatures in the NPC Library.</li>
                             <li><strong>Ailments:</strong> Save status effects in the Ailment Library.</li>
                             <li><strong>Encounters:</strong> Start new encounters and pull your saved data in.</li>
@@ -100,7 +100,7 @@
                     <div id="guide-2" class="p-4 pt-0 text-gray-300 hidden">
                         <ul class="space-y-3 list-disc list-inside text-sm">
                             <li><strong>Initiative:</strong> Tap the init box to enter a number. Combatants auto-sort. Tap ✎ to edit.</li>
-                            <li><strong>Assign Weapons:</strong> Use the dropdown on an NPC. Tapping the button rolls damage.</li>
+                            <li><strong>NPC Attacks:</strong> Attacks are loaded automatically from the SRD bestiary. Tap any attack button to roll damage.</li>
                             <li><strong>Assign Ailments:</strong> Use the Ailment dropdown. Tapping rolls damage, subtracts HP, and ticks down rounds.</li>
                             <li><strong>Health Tracking:</strong> Use -1 and -5 buttons. HP cannot drop below zero.</li>
                             <li><strong>Defeat:</strong> 0 HP marks the NPC DEAD and tallies XP.</li>
@@ -140,40 +140,75 @@
             <div id="player-list" class="space-y-2"></div>
         </div>
 
-        <!-- WEAPONS -->
-        <div id="weapons" class="page">
-            <h2 class="text-2xl font-bold mb-6">Weapons</h2>
-            <div class="bg-gray-800 p-4 rounded border border-gray-700 mb-6 space-y-2">
-                <input id="w-name" placeholder="Weapon Name" class="p-2 bg-gray-900 rounded border border-gray-700 w-full">
-                <div class="flex gap-2">
-                    <select id="w-dice-count" class="p-2 bg-gray-900 rounded border border-gray-700 flex-1">
-                        <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
-                    </select>
-                    <select id="w-dice-type" class="p-2 bg-gray-900 rounded border border-gray-700 flex-1">
-                        <option value="4">D4</option><option value="6">D6</option><option value="8">D8</option><option value="10">D10</option><option value="12">D12</option>
-                    </select>
-                    <input id="w-bonus" type="number" placeholder="Bonus" class="p-2 bg-gray-900 rounded border border-gray-700 flex-1">
-                </div>
-                <button onclick="addWeapon()" class="w-full bg-green-700 py-2 rounded font-bold">Add Weapon</button>
-            </div>
-            <div id="weapon-list" class="space-y-2"></div>
-        </div>
-
         <!-- NPC LIBRARY -->
         <div id="npcs" class="page">
-            <h2 class="text-2xl font-bold mb-6">NPC Library</h2>
-            <div class="bg-gray-800 p-4 rounded border border-gray-700 mb-6 space-y-2">
-                <input id="lib-name" placeholder="NPC Name" class="p-2 bg-gray-900 rounded border border-gray-700 w-full">
-                <select id="lib-resistance" class="w-full bg-gray-900 border border-gray-700 p-2 rounded">
-                    <option value="None">No Resistance</option>
-                    <option value="Fire">Fire</option><option value="Ice">Ice</option><option value="Water">Water</option><option value="Air">Air</option>
-                    <option value="Pierce">Pierce</option><option value="Bludgeoning">Bludgeoning</option><option value="Slashing">Slashing</option>
-                    <option value="Poison">Poison</option><option value="Electricity">Electricity</option>
-                </select>
-                <label class="flex items-center gap-2"><input id="lib-is-boss" type="checkbox"> <span>Is Boss?</span></label>
-                <button onclick="addLibNPC()" class="w-full bg-purple-700 py-2 rounded font-bold">Add to Library</button>
+            <h2 class="text-2xl font-bold mb-4">NPC Library</h2>
+            <div id="bestiary-status" class="text-xs text-gray-400 mb-3 text-center"></div>
+            <!-- Search -->
+            <div class="bg-gray-800 p-3 rounded border border-gray-700 mb-3">
+                <input id="lib-search" oninput="renderLibNPCs()" placeholder="🔍 Search NPCs..." class="p-2 bg-gray-900 rounded border border-gray-700 w-full text-sm">
             </div>
-            <div id="lib-list" class="space-y-2"></div>
+            <!-- Custom NPC form -->
+            <details class="bg-gray-800 rounded border border-gray-700 mb-4">
+                <summary class="p-3 font-bold text-yellow-500 cursor-pointer text-sm">+ Add Custom NPC</summary>
+                <div class="p-3 space-y-2 border-t border-gray-700">
+                    <input id="lib-name" placeholder="NPC Name" class="p-2 bg-gray-900 rounded border border-gray-700 w-full text-sm">
+                    <select id="lib-cr" class="w-full bg-gray-900 border border-gray-700 p-2 rounded text-sm">
+                        <option value="0">CR 0</option>
+                        <option value="0.125">CR 1/8</option>
+                        <option value="0.25">CR 1/4</option>
+                        <option value="0.5">CR 1/2</option>
+                        <option value="1">CR 1</option>
+                        <option value="2">CR 2</option>
+                        <option value="3">CR 3</option>
+                        <option value="4">CR 4</option>
+                        <option value="5">CR 5</option>
+                        <option value="6">CR 6</option>
+                        <option value="7">CR 7</option>
+                        <option value="8">CR 8</option>
+                        <option value="9">CR 9</option>
+                        <option value="10">CR 10</option>
+                        <option value="11">CR 11</option>
+                        <option value="12">CR 12</option>
+                        <option value="13">CR 13</option>
+                        <option value="14">CR 14</option>
+                        <option value="15">CR 15</option>
+                        <option value="16">CR 16</option>
+                        <option value="17">CR 17</option>
+                        <option value="18">CR 18</option>
+                        <option value="19">CR 19</option>
+                        <option value="20">CR 20</option>
+                    </select>
+                    <select id="lib-resistance" class="w-full bg-gray-900 border border-gray-700 p-2 rounded text-sm">
+                        <option value="None">No Resistance</option>
+                        <option value="Fire">Fire</option><option value="Ice">Ice</option><option value="Water">Water</option><option value="Air">Air</option>
+                        <option value="Pierce">Pierce</option><option value="Bludgeoning">Bludgeoning</option><option value="Slashing">Slashing</option>
+                        <option value="Poison">Poison</option><option value="Electricity">Electricity</option>
+                    </select>
+                    <label class="flex items-center gap-2 text-sm"><input id="lib-is-boss" type="checkbox"> <span>Is Boss?</span></label>
+                    <div id="custom-attacks-list" class="space-y-1"></div>
+                    <div class="grid grid-cols-3 gap-1">
+                        <input id="atk-name" placeholder="Attack name" class="p-1 bg-gray-900 rounded border border-gray-700 text-xs col-span-3">
+                        <select id="atk-count" class="p-1 bg-gray-900 rounded border border-gray-700 text-xs">
+                            <option>1</option><option>2</option><option>3</option><option>4</option>
+                        </select>
+                        <select id="atk-die" class="p-1 bg-gray-900 rounded border border-gray-700 text-xs">
+                            <option value="4">d4</option><option value="6">d6</option><option value="8">d8</option><option value="10">d10</option><option value="12">d12</option>
+                        </select>
+                        <input id="atk-bonus" type="number" placeholder="+bonus" class="p-1 bg-gray-900 rounded border border-gray-700 text-xs">
+                    </div>
+                    <select id="atk-type" class="w-full bg-gray-900 border border-gray-700 p-1 rounded text-xs">
+                        <option value="slashing">Slashing</option><option value="piercing">Piercing</option><option value="bludgeoning">Bludgeoning</option>
+                        <option value="fire">Fire</option><option value="cold">Cold</option><option value="lightning">Lightning</option>
+                        <option value="poison">Poison</option><option value="acid">Acid</option><option value="necrotic">Necrotic</option>
+                        <option value="radiant">Radiant</option><option value="psychic">Psychic</option><option value="force">Force</option>
+                        <option value="thunder">Thunder</option>
+                    </select>
+                    <button onclick="addCustomAttack()" class="w-full bg-gray-600 py-1 rounded text-xs font-bold">+ Add Attack</button>
+                    <button onclick="addLibNPC()" class="w-full bg-purple-700 py-2 rounded font-bold text-sm">Save Custom NPC</button>
+                </div>
+            </details>
+            <div id="lib-list" class="space-y-1"></div>
         </div>
 
         <!-- AILMENT LIBRARY -->
@@ -233,9 +268,6 @@
         <button onclick="showPage('ailments',this)" data-label="Ailment Library" class="tab-btn flex-1 flex flex-col items-center py-1 text-gray-400">
             <span class="text-xl">🩸</span><span class="text-xs">Ailments</span>
         </button>
-        <button onclick="showPage('weapons',this)" data-label="Weapons" class="tab-btn flex-1 flex flex-col items-center py-1 text-gray-400">
-            <span class="text-xl">🗡️</span><span class="text-xs">Weapons</span>
-        </button>
         <button onclick="showPage('encounters',this)" data-label="Encounters" class="tab-btn flex-1 flex flex-col items-center py-1 text-gray-400">
             <span class="text-xl">⚔️</span><span class="text-xs">Encounter</span>
         </button>
@@ -246,174 +278,243 @@
 
     <!-- ── App Script ── -->
     <script>
-        let npcLibrary   = JSON.parse(localStorage.getItem('dmm_npcLibrary'))   || [];
+        // ── State ────────────────────────────────────────────────────────
+        let npcLibrary     = JSON.parse(localStorage.getItem('dmm_npcLibrary'))     || [];
         let ailmentLibrary = JSON.parse(localStorage.getItem('dmm_ailmentLibrary')) || [];
-        let players      = JSON.parse(localStorage.getItem('dmm_players'))      || [];
-        let weapons      = JSON.parse(localStorage.getItem('dmm_weapons'))      || [];
-        let encounters   = JSON.parse(localStorage.getItem('dmm_encounters'))   || [];
-
-        // ── D&D 5e Defaults (loaded once if library is empty) ─────────────
-        const DEFAULT_WEAPONS = [
-            // Simple Melee
-            { id: 1001, name: 'Club',        count: '1', type: '4',  bonus: '0' },
-            { id: 1002, name: 'Dagger',      count: '1', type: '4',  bonus: '0' },
-            { id: 1003, name: 'Greatclub',   count: '1', type: '8',  bonus: '0' },
-            { id: 1004, name: 'Handaxe',     count: '1', type: '6',  bonus: '0' },
-            { id: 1005, name: 'Javelin',     count: '1', type: '6',  bonus: '0' },
-            { id: 1006, name: 'Light Hammer',count: '1', type: '4',  bonus: '0' },
-            { id: 1007, name: 'Mace',        count: '1', type: '6',  bonus: '0' },
-            { id: 1008, name: 'Quarterstaff',count: '1', type: '6',  bonus: '0' },
-            { id: 1009, name: 'Spear',       count: '1', type: '6',  bonus: '0' },
-            // Simple Ranged
-            { id: 1010, name: 'Shortbow',    count: '1', type: '6',  bonus: '0' },
-            { id: 1011, name: 'Light Crossbow', count: '1', type: '8', bonus: '0' },
-            { id: 1012, name: 'Sling',       count: '1', type: '4',  bonus: '0' },
-            // Martial Melee
-            { id: 1013, name: 'Battleaxe',   count: '1', type: '8',  bonus: '0' },
-            { id: 1014, name: 'Flail',       count: '1', type: '8',  bonus: '0' },
-            { id: 1015, name: 'Glaive',      count: '1', type: '10', bonus: '0' },
-            { id: 1016, name: 'Greataxe',    count: '1', type: '12', bonus: '0' },
-            { id: 1017, name: 'Greatsword',  count: '2', type: '6',  bonus: '0' },
-            { id: 1018, name: 'Longsword',   count: '1', type: '8',  bonus: '0' },
-            { id: 1019, name: 'Maul',        count: '2', type: '6',  bonus: '0' },
-            { id: 1020, name: 'Rapier',      count: '1', type: '8',  bonus: '0' },
-            { id: 1021, name: 'Shortsword',  count: '1', type: '6',  bonus: '0' },
-            { id: 1022, name: 'War Pick',    count: '1', type: '8',  bonus: '0' },
-            { id: 1023, name: 'Warhammer',   count: '1', type: '8',  bonus: '0' },
-            // Martial Ranged
-            { id: 1024, name: 'Hand Crossbow', count: '1', type: '6', bonus: '0' },
-            { id: 1025, name: 'Longbow',     count: '1', type: '8',  bonus: '0' },
-        ];
-
-        const DEFAULT_AILMENTS = [
-            // Damaging conditions
-            { name: 'Poison',           duration: '3', damage: '1d4' },
-            { name: 'Acid Burn',        duration: '2', damage: '1d6' },
-            { name: 'Bleeding',         duration: '3', damage: '1d4' },
-            { name: 'Fire (On Fire)',   duration: '2', damage: '1d6' },
-            { name: 'Necrotic Rot',     duration: '3', damage: '1d6' },
-            { name: 'Lightning Shock',  duration: '1', damage: '1d6' },
-            { name: 'Frostbite',        duration: '2', damage: '1d4' },
-            // Non-damaging status conditions (for tracking)
-            { name: 'Blinded',          duration: '2', damage: 'none' },
-            { name: 'Charmed',          duration: '2', damage: 'none' },
-            { name: 'Deafened',         duration: '2', damage: 'none' },
-            { name: 'Frightened',       duration: '2', damage: 'none' },
-            { name: 'Grappled',         duration: '1', damage: 'none' },
-            { name: 'Incapacitated',    duration: '1', damage: 'none' },
-            { name: 'Paralyzed',        duration: '2', damage: 'none' },
-            { name: 'Poisoned',         duration: '3', damage: 'none' },
-            { name: 'Prone',            duration: '1', damage: 'none' },
-            { name: 'Restrained',       duration: '2', damage: 'none' },
-            { name: 'Stunned',          duration: '1', damage: 'none' },
-            { name: 'Unconscious',      duration: '2', damage: 'none' },
-            { name: 'Exhaustion Lvl 1', duration: '3', damage: 'none' },
-        ];
-
-        const DEFAULT_NPCS = [
-            // CR 0
-            { name: 'Commoner',       isBoss: false, resistance: 'None' },
-            { name: 'Rat',            isBoss: false, resistance: 'None' },
-            { name: 'Raven',          isBoss: false, resistance: 'None' },
-            // CR 1/8
-            { name: 'Bandit',         isBoss: false, resistance: 'None' },
-            { name: 'Cultist',        isBoss: false, resistance: 'None' },
-            { name: 'Guard',          isBoss: false, resistance: 'None' },
-            { name: 'Kobold',         isBoss: false, resistance: 'None' },
-            { name: 'Mastiff',        isBoss: false, resistance: 'None' },
-            { name: 'Merfolk',        isBoss: false, resistance: 'None' },
-            // CR 1/4
-            { name: 'Acolyte',        isBoss: false, resistance: 'None' },
-            { name: 'Goblin',         isBoss: false, resistance: 'None' },
-            { name: 'Skeleton',       isBoss: false, resistance: 'Bludgeoning' },
-            { name: 'Wolf',           isBoss: false, resistance: 'None' },
-            { name: 'Zombie',         isBoss: false, resistance: 'None' },
-            // CR 1/2
-            { name: 'Black Bear',     isBoss: false, resistance: 'None' },
-            { name: 'Crocodile',      isBoss: false, resistance: 'None' },
-            { name: 'Hobgoblin',      isBoss: false, resistance: 'None' },
-            { name: 'Orc',            isBoss: false, resistance: 'None' },
-            { name: 'Scout',          isBoss: false, resistance: 'None' },
-            { name: 'Shadow',         isBoss: false, resistance: 'Fire' },
-            // CR 1
-            { name: 'Bugbear',        isBoss: false, resistance: 'None' },
-            { name: 'Dire Wolf',      isBoss: false, resistance: 'None' },
-            { name: 'Giant Spider',   isBoss: false, resistance: 'Poison' },
-            { name: 'Ghoul',          isBoss: false, resistance: 'None' },
-            { name: 'Specter',        isBoss: false, resistance: 'Fire' },
-            // CR 2
-            { name: 'Bandit Captain', isBoss: false, resistance: 'None' },
-            { name: 'Berserker',      isBoss: false, resistance: 'None' },
-            { name: 'Gargoyle',       isBoss: false, resistance: 'Pierce' },
-            { name: 'Ghast',          isBoss: false, resistance: 'None' },
-            { name: 'Ogre',           isBoss: false, resistance: 'None' },
-            { name: 'Werewolf',       isBoss: false, resistance: 'Slashing' },
-            // CR 3
-            { name: 'Knight',         isBoss: false, resistance: 'None' },
-            { name: 'Manticore',      isBoss: false, resistance: 'None' },
-            { name: 'Minotaur',       isBoss: false, resistance: 'None' },
-            { name: 'Mummy',          isBoss: false, resistance: 'Fire' },
-            { name: 'Vampire Spawn',  isBoss: false, resistance: 'None' },
-            { name: 'Wight',          isBoss: false, resistance: 'None' },
-            // CR 4
-            { name: 'Banshee',        isBoss: false, resistance: 'None' },
-            { name: 'Ettin',          isBoss: false, resistance: 'None' },
-            { name: 'Wereboar',       isBoss: false, resistance: 'Slashing' },
-            // CR 5
-            { name: 'Gladiator',      isBoss: false, resistance: 'None' },
-            { name: 'Troll',          isBoss: false, resistance: 'None' },
-            { name: 'Wraith',         isBoss: false, resistance: 'Fire' },
-            // Boss-tier
-            { name: 'Adult Red Dragon',  isBoss: true,  resistance: 'Fire' },
-            { name: 'Adult Blue Dragon', isBoss: true,  resistance: 'Electricity' },
-            { name: 'Lich',              isBoss: true,  resistance: 'Poison' },
-            { name: 'Vampire',           isBoss: true,  resistance: 'None' },
-            { name: 'Beholder',          isBoss: true,  resistance: 'None' },
-            { name: 'Mindflayer',        isBoss: true,  resistance: 'None' },
-            { name: 'Tarrasque',         isBoss: true,  resistance: 'Fire' },
-        ];
-
-        if (weapons.length === 0)      { weapons = DEFAULT_WEAPONS.map(w => ({...w})); save(); }
-        if (ailmentLibrary.length === 0){ ailmentLibrary = DEFAULT_AILMENTS.map(a => ({...a})); save(); }
-        if (npcLibrary.length === 0)   { npcLibrary = DEFAULT_NPCS.map(n => ({...n})); save(); }
-
-        let pendingNPC = null, pendingWeapon = null;
-        let expandedEncounters = new Set(), editingEncounterName = new Set(), editingInit = new Set();
-        let toastTimeout = null;
+        let players        = JSON.parse(localStorage.getItem('dmm_players'))        || [];
+        let encounters     = JSON.parse(localStorage.getItem('dmm_encounters'))     || [];
+        let pendingNPC     = null;
+        let expandedEncounters = new Set();
+        let editingEncounterName = new Set();
+        let editingInit    = new Set();
+        let toastTimeout   = null;
+        let customAttacksDraft = [];   // attacks being built for a new custom NPC
 
         // ── Persistence ──────────────────────────────────────────────────
         function save() {
-            localStorage.setItem('dmm_npcLibrary',    JSON.stringify(npcLibrary));
-            localStorage.setItem('dmm_ailmentLibrary',JSON.stringify(ailmentLibrary));
-            localStorage.setItem('dmm_players',       JSON.stringify(players));
-            localStorage.setItem('dmm_weapons',       JSON.stringify(weapons));
-            localStorage.setItem('dmm_encounters',    JSON.stringify(encounters));
+            localStorage.setItem('dmm_npcLibrary',     JSON.stringify(npcLibrary));
+            localStorage.setItem('dmm_ailmentLibrary', JSON.stringify(ailmentLibrary));
+            localStorage.setItem('dmm_players',        JSON.stringify(players));
+            localStorage.setItem('dmm_encounters',     JSON.stringify(encounters));
         }
 
         function exportData() {
-            const data = { npcLibrary, ailmentLibrary, players, weapons, encounters };
+            const data = { npcLibrary, ailmentLibrary, players, encounters };
             const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement('a');
             a.href = url;
             a.download = 'dmm_backup_' + new Date().toISOString().slice(0, 10) + '.json';
             a.click();
         }
 
         function importData(event) {
-            const file = event.target.files[0];
+            const file   = event.target.files[0];
             const reader = new FileReader();
             reader.onload = (e) => {
-                const data = JSON.parse(e.target.result);
+                const data     = JSON.parse(e.target.result);
                 npcLibrary     = data.npcLibrary     || [];
                 ailmentLibrary = data.ailmentLibrary || [];
                 players        = data.players        || [];
-                weapons        = data.weapons        || [];
                 encounters     = data.encounters     || [];
                 save(); location.reload();
             };
             reader.readAsText(file);
         }
+
+        // ── Bestiary loader ──────────────────────────────────────────────
+        // Fetches all SRD monsters from Open5e and stores in localStorage.
+        // Each NPC entry gets an `attacks` array: [{name, damageDice, bonus, damageType}]
+        async function loadBestiary() {
+            const CACHE_KEY = 'dmm_bestiary_v2';
+            const STATUS_EL = document.getElementById('bestiary-status');
+
+            // Already loaded
+            if (localStorage.getItem(CACHE_KEY)) {
+                const cached = JSON.parse(localStorage.getItem(CACHE_KEY));
+                if (npcLibrary.length === 0) {
+                    npcLibrary = cached;
+                    save();
+                }
+                if (STATUS_EL) STATUS_EL.textContent = cached.length + ' monsters loaded from cache';
+                renderLibNPCs();
+                return;
+            }
+
+            if (STATUS_EL) STATUS_EL.textContent = 'Loading bestiary from Open5e...';
+
+            try {
+                let url = 'https://api.open5e.com/v1/monsters/?limit=100&document__slug=wotc-srd&format=json';
+                let allMonsters = [];
+
+                while (url) {
+                    const resp = await fetch(url);
+                    const data = await resp.json();
+                    allMonsters = allMonsters.concat(data.results);
+                    url = data.next;
+                    if (STATUS_EL) STATUS_EL.textContent = 'Loading... ' + allMonsters.length + ' monsters';
+                }
+
+                const parsed = allMonsters.map(m => parseMonster(m));
+                localStorage.setItem(CACHE_KEY, JSON.stringify(parsed));
+
+                if (npcLibrary.length === 0) {
+                    npcLibrary = parsed;
+                    save();
+                }
+
+                if (STATUS_EL) STATUS_EL.textContent = parsed.length + ' SRD monsters loaded';
+                renderLibNPCs();
+
+            } catch (err) {
+                console.warn('Bestiary load failed:', err);
+                if (STATUS_EL) STATUS_EL.textContent = 'Could not reach Open5e — using local defaults';
+                if (npcLibrary.length === 0) {
+                    npcLibrary = DEFAULT_NPCS;
+                    save();
+                }
+                renderLibNPCs();
+            }
+        }
+
+        // Parse a raw Open5e monster into DMM's NPC format
+        function parseMonster(m) {
+            const attacks = [];
+            const actions = m.actions || [];
+
+            actions.forEach(a => {
+                if (!a.damage_dice) return;
+                // Parse "2d6+3" or "1d8" style strings
+                const match = String(a.damage_dice).match(/(\d+)d(\d+)([+-]\d+)?/);
+                if (!match) return;
+                const count  = parseInt(match[1]);
+                const die    = parseInt(match[2]);
+                const bonus  = parseInt(match[3] || '0');
+                // Infer damage type from description text
+                const desc   = (a.desc || '').toLowerCase();
+                let dmgType  = 'bludgeoning';
+                const TYPES  = ['slashing','piercing','bludgeoning','fire','cold','lightning',
+                                 'poison','acid','necrotic','radiant','psychic','force','thunder'];
+                for (const t of TYPES) { if (desc.includes(t)) { dmgType = t; break; } }
+                attacks.push({ name: a.name, count, die, bonus, damageType: dmgType });
+            });
+
+            // Determine resistance from damage_resistances field
+            const resText = (m.damage_resistances || '').toLowerCase();
+            let resistance = 'None';
+            const RES_MAP = { fire:'Fire', cold:'Ice', lightning:'Electricity', poison:'Poison',
+                              acid:'Acid', bludgeoning:'Bludgeoning', piercing:'Pierce',
+                              slashing:'Slashing', necrotic:'Necrotic' };
+            for (const [k, v] of Object.entries(RES_MAP)) {
+                if (resText.includes(k)) { resistance = v; break; }
+            }
+
+            const cr = parseFloat(m.challenge_rating) || 0;
+            const isBoss = cr >= 10;
+
+            return {
+                name: m.name,
+                isBoss,
+                resistance,
+                attacks,
+                cr: m.challenge_rating,
+                type: m.type || '',
+                fromSRD: true,
+                // Stats for encounter use
+                ac:          m.armor_class   || 10,
+                baseHp:      m.hit_points    || 10,
+                perception:  m.perception    || 0,
+                xpByCR:      crToXP(cr),
+            };
+        }
+
+        // MM-accurate average HP by CR (based on actual Monster Manual stat blocks,
+        // not the inflated DMG table)
+        function crToBaseHp(cr) {
+            const table = {
+                0: 3, 0.125: 9, 0.25: 15, 0.5: 24,
+                1: 30, 2: 45, 3: 60, 4: 75, 5: 90,
+                6: 105, 7: 120, 8: 136, 9: 145, 10: 155,
+                11: 178, 12: 195, 13: 215, 14: 230, 15: 245,
+                16: 260, 17: 280, 18: 300, 19: 320, 20: 345,
+                21: 380, 22: 410, 23: 440, 24: 470, 30: 546
+            };
+            // Find nearest key
+            const keys = Object.keys(table).map(Number).sort((a,b)=>a-b);
+            let closest = keys[0];
+            for (const k of keys) { if (k <= cr) closest = k; }
+            return table[closest] || Math.round(cr * 15 + 10);
+        }
+
+        function crToAC(cr) {
+            // AC scales gently — MM average
+            if (cr <= 0.125) return 11;
+            if (cr <= 0.5)   return 12;
+            if (cr <= 2)     return 13;
+            if (cr <= 4)     return 14;
+            if (cr <= 7)     return 15;
+            if (cr <= 10)    return 16;
+            if (cr <= 15)    return 17;
+            if (cr <= 20)    return 18;
+            return 19;
+        }
+
+        function crToXP(cr) {
+            // Official D&D 5e XP by Challenge Rating (Monster Manual p.9 / DMG p.274)
+            const table = {
+                0:    10,
+                0.125: 25,
+                0.25:  50,
+                0.5:  100,
+                1:    200,
+                2:    450,
+                3:    700,
+                4:   1100,
+                5:   1800,
+                6:   2300,
+                7:   2900,
+                8:   3900,
+                9:   5000,
+                10:  5900,
+                11:  7200,
+                12:  8400,
+                13: 10000,
+                14: 11500,
+                15: 13000,
+                16: 15000,
+                17: 18000,
+                18: 20000,
+                19: 22000,
+                20: 25000,
+                21: 33000,
+                22: 41000,
+                23: 50000,
+                24: 62000,
+                25: 75000,
+                26: 90000,
+                27: 105000,
+                28: 120000,
+                29: 135000,
+                30: 155000,
+            };
+            // Find the closest matching CR key (handles fractional CRs)
+            const keys  = Object.keys(table).map(Number).sort((a, b) => a - b);
+            let best    = keys[0];
+            for (const k of keys) { if (k <= cr) best = k; }
+            return table[best] ?? Math.round(cr * 5000);
+        }
+
+        // ── Default NPC fallback (if Open5e unreachable) ─────────────────
+        const DEFAULT_NPCS = [
+            { name:'Goblin',    isBoss:false, resistance:'None',        cr:'1/4', type:'Humanoid', fromSRD:false, ac:15, baseHp:7,   perception:2,  xpByCR:50,  attacks:[{name:'Scimitar',count:1,die:6,bonus:2,damageType:'slashing'},{name:'Shortbow',count:1,die:6,bonus:2,damageType:'piercing'}] },
+            { name:'Skeleton',  isBoss:false, resistance:'Bludgeoning', cr:'1/4', type:'Undead',   fromSRD:false, ac:13, baseHp:13,  perception:0,  xpByCR:50,  attacks:[{name:'Shortsword',count:1,die:6,bonus:2,damageType:'piercing'},{name:'Shortbow',count:1,die:6,bonus:2,damageType:'piercing'}] },
+            { name:'Zombie',    isBoss:false, resistance:'None',        cr:'1/4', type:'Undead',   fromSRD:false, ac:8,  baseHp:22,  perception:-2, xpByCR:50,  attacks:[{name:'Slam',count:1,die:6,bonus:1,damageType:'bludgeoning'}] },
+            { name:'Orc',       isBoss:false, resistance:'None',        cr:'1/2', type:'Humanoid', fromSRD:false, ac:13, baseHp:15,  perception:2,  xpByCR:100, attacks:[{name:'Greataxe',count:1,die:12,bonus:3,damageType:'slashing'},{name:'Javelin',count:1,die:6,bonus:3,damageType:'piercing'}] },
+            { name:'Bugbear',   isBoss:false, resistance:'None',        cr:'1',   type:'Humanoid', fromSRD:false, ac:16, baseHp:27,  perception:2,  xpByCR:200, attacks:[{name:'Morningstar',count:2,die:8,bonus:2,damageType:'piercing'},{name:'Javelin',count:2,die:6,bonus:2,damageType:'piercing'}] },
+            { name:'Ogre',      isBoss:false, resistance:'None',        cr:'2',   type:'Giant',    fromSRD:false, ac:11, baseHp:59,  perception:-1, xpByCR:450, attacks:[{name:'Greatclub',count:2,die:8,bonus:4,damageType:'bludgeoning'},{name:'Javelin',count:2,die:6,bonus:4,damageType:'piercing'}] },
+            { name:'Troll',     isBoss:false, resistance:'None',        cr:'5',   type:'Giant',    fromSRD:false, ac:15, baseHp:84,  perception:2,  xpByCR:1800,attacks:[{name:'Bite',count:1,die:6,bonus:4,damageType:'piercing'},{name:'Claw',count:2,die:6,bonus:4,damageType:'slashing'}] },
+            { name:'Vampire',   isBoss:true,  resistance:'None',        cr:'13',  type:'Undead',   fromSRD:false, ac:16, baseHp:144, perception:7,  xpByCR:10000,attacks:[{name:'Unarmed Strike',count:1,die:8,bonus:6,damageType:'bludgeoning'},{name:'Bite',count:1,die:6,bonus:0,damageType:'piercing'}] },
+        ];
 
         // ── Navigation ───────────────────────────────────────────────────
         function showPage(pageId, btnEl) {
@@ -447,59 +548,6 @@
             toastTimeout = setTimeout(() => t.classList.add('hidden'), 5000);
         }
 
-        // ── Weapons ──────────────────────────────────────────────────────
-        function addWeapon() {
-            const name = document.getElementById('w-name').value.trim();
-            if (!name) return;
-            const newWeapon = {
-                id: Date.now(), name,
-                count: document.getElementById('w-dice-count').value,
-                type:  document.getElementById('w-dice-type').value,
-                bonus: document.getElementById('w-bonus').value || 0
-            };
-            const existing = weapons.find(w => w.name.toLowerCase() === name.toLowerCase());
-            if (existing) { pendingWeapon = newWeapon; document.getElementById('confirm-modal').classList.remove('hidden'); }
-            else { weapons.push(newWeapon); save(); renderWeapons(); renderEncounters(); }
-        }
-
-        function overwriteWeapon() {
-            if (pendingWeapon) {
-                weapons = weapons.map(w => w.name.toLowerCase() === pendingWeapon.name.toLowerCase() ? pendingWeapon : w);
-                save(); renderWeapons(); renderEncounters();
-                closeModal('confirm-modal'); pendingWeapon = null;
-            }
-        }
-
-        function removeWeapon(id) {
-            const weapon = weapons.find(w => w.id === id);
-            if (!weapon) return;
-            const usingEncounter = encounters.find(e => e.combatants.some(c => c.weapon?.toLowerCase() === weapon.name.toLowerCase()));
-            if (usingEncounter) {
-                document.getElementById('error-msg').innerText = `"${weapon.name}" is used in "${usingEncounter.name}". Remove it from that encounter first.`;
-                document.getElementById('error-modal').classList.remove('hidden');
-                return;
-            }
-            weapons = weapons.filter(w => w.id !== id);
-            save(); renderWeapons(); renderEncounters();
-        }
-
-        function rollDamage(wName) {
-            const w = weapons.find(we => we.name.toLowerCase() === wName.toLowerCase());
-            if (!w) return;
-            let total = 0;
-            for (let i = 0; i < parseInt(w.count); i++) total += Math.floor(Math.random() * parseInt(w.type)) + 1;
-            total += parseInt(w.bonus) || 0;
-            showToast(`⚔ ${w.name}: ${total} dmg (${w.count}d${w.type}+${w.bonus})`);
-        }
-
-        function renderWeapons() {
-            document.getElementById('weapon-list').innerHTML = weapons.map(w => `
-                <div class="bg-gray-800 p-3 rounded border border-gray-700 flex justify-between items-center">
-                    <span class="text-sm"><strong>${w.name}</strong> (${w.count}D${w.type}+${w.bonus})</span>
-                    <button onclick="removeWeapon(${w.id})" class="text-red-500 text-xs px-2 py-1">Remove</button>
-                </div>`).join('');
-        }
-
         // ── Players ──────────────────────────────────────────────────────
         function addPlayerToLibrary() {
             const n = document.getElementById('p-new-name');
@@ -518,33 +566,91 @@
         }
 
         // ── NPC Library ──────────────────────────────────────────────────
+        function addCustomAttack() {
+            const name  = document.getElementById('atk-name').value.trim();
+            const count = document.getElementById('atk-count').value;
+            const die   = document.getElementById('atk-die').value;
+            const bonus = parseInt(document.getElementById('atk-bonus').value) || 0;
+            const type  = document.getElementById('atk-type').value;
+            if (!name) return;
+            customAttacksDraft.push({ name, count: parseInt(count), die: parseInt(die), bonus, damageType: type });
+            document.getElementById('atk-name').value = '';
+            renderCustomAttacksDraft();
+        }
+
+        function renderCustomAttacksDraft() {
+            document.getElementById('custom-attacks-list').innerHTML = customAttacksDraft.map((a, i) =>
+                '<div class="flex justify-between items-center bg-gray-900 px-2 py-1 rounded text-xs">'
+                + '<span>' + a.name + ' (' + a.count + 'd' + a.die + (a.bonus ? '+' + a.bonus : '') + ' ' + a.damageType + ')</span>'
+                + '<button onclick="customAttacksDraft.splice(' + i + ',1);renderCustomAttacksDraft();" class="text-red-500 ml-2">✕</button>'
+                + '</div>'
+            ).join('');
+        }
+
         function addLibNPC() {
-            const n = document.getElementById('lib-name').value.trim();
+            const n    = document.getElementById('lib-name').value.trim();
             const boss = document.getElementById('lib-is-boss').checked;
-            const resistance = document.getElementById('lib-resistance').value;
+            const res  = document.getElementById('lib-resistance').value;
+            const cr   = parseFloat(document.getElementById('lib-cr').value) || 0;
+            const crLabel = cr === 0.125 ? '1/8' : cr === 0.25 ? '1/4' : cr === 0.5 ? '1/2' : String(cr);
             if (!n) return;
-            npcLibrary.push({ name: n, isBoss: boss, resistance });
-            save(); renderLibNPCs(); renderEncounters();
+            npcLibrary.unshift({
+                name: n, isBoss: boss, resistance: res,
+                attacks: [...customAttacksDraft],
+                cr: crLabel, type: 'Custom', fromSRD: false,
+                ac: crToAC(cr),
+                baseHp: crToBaseHp(cr),
+                perception: Math.max(0, Math.floor(cr / 4)),
+                xpByCR: crToXP(cr)
+            });
+            customAttacksDraft = [];
+            renderCustomAttacksDraft();
             document.getElementById('lib-name').value = '';
+            document.getElementById('lib-cr').value = '1';
             document.getElementById('lib-resistance').value = 'None';
             document.getElementById('lib-is-boss').checked = false;
+            save(); renderLibNPCs();
+        }
+
+        function removeLibNPC(idx) {
+            npcLibrary.splice(idx, 1);
+            save(); renderLibNPCs();
         }
 
         function renderLibNPCs() {
-            document.getElementById('lib-list').innerHTML = npcLibrary.map((npc, i) => `
-                <div class="bg-gray-800 p-3 rounded flex justify-between items-center">
-                    <span class="text-sm">${npc.name}
-                        ${npc.isBoss ? '<span class="text-red-500 ml-1">[BOSS]</span>' : ''}
-                        ${npc.resistance !== 'None' ? '<span class="text-blue-400 text-xs ml-1">Res: ' + npc.resistance + '</span>' : ''}
-                    </span>
-                    <button onclick="npcLibrary.splice(${i},1);save();renderLibNPCs();renderEncounters();" class="text-red-500 text-xs px-2 py-1">Remove</button>
-                </div>`).join('');
+            const q = (document.getElementById('lib-search')?.value || '').toLowerCase();
+            const filtered = npcLibrary
+                .map((npc, i) => ({ npc, i }))
+                .filter(({ npc }) => !q || npc.name.toLowerCase().includes(q));
+
+            document.getElementById('lib-list').innerHTML = filtered.slice(0, 100).map(({ npc, i }) => {
+                const atkSummary = (npc.attacks || []).map(a =>
+                    a.name + ' (' + a.count + 'd' + a.die + (a.bonus ? '+' + a.bonus : '') + ')'
+                ).join(', ') || 'No attacks';
+                return '<div class="bg-gray-800 p-2 rounded border border-gray-700 text-xs mb-1">'
+                    + '<div class="flex justify-between items-start">'
+                    + '<span class="font-bold text-sm">' + npc.name
+                    + (npc.isBoss ? ' <span class="text-red-500">[BOSS]</span>' : '')
+                    + '</span>'
+                    + '<button onclick="removeLibNPC(' + i + ')" class="text-red-500 ml-2 shrink-0">✕</button>'
+                    + '</div>'
+                    + '<div class="text-gray-400 mt-1">CR ' + (npc.cr || '?') + ' · ' + (npc.type || '') + (npc.resistance !== 'None' ? ' · Res: ' + npc.resistance : '') + '</div>'
+                    + '<div class="text-gray-500 mt-1 truncate">' + atkSummary + '</div>'
+                    + '</div>';
+            }).join('');
+
+            const shown = Math.min(filtered.length, 100);
+            const total = filtered.length;
+            const status = document.getElementById('bestiary-status');
+            if (status && !status.textContent.includes('Loading')) {
+                status.textContent = 'Showing ' + shown + ' of ' + total + ' monsters' + (q ? ' matching "' + q + '"' : '');
+            }
         }
 
         // ── Ailment Library ──────────────────────────────────────────────
         function addAilment() {
-            const n = document.getElementById('ail-name').value.trim();
-            const d = document.getElementById('ail-dur').value;
+            const n   = document.getElementById('ail-name').value.trim();
+            const d   = document.getElementById('ail-dur').value;
             const dmg = document.getElementById('ail-dmg').value;
             if (!n) return;
             ailmentLibrary.push({ name: n, duration: d, damage: dmg });
@@ -561,7 +667,7 @@
         }
 
         // ── Ailment in encounter ─────────────────────────────────────────
-        function assignAilment(eId, cId, ailName, selectEl) {
+        function assignAilment(eId, cId, ailName) {
             if (!ailName) return;
             const e = encounters.find(en => en.id === eId);
             const c = e?.combatants.find(co => co.id === cId);
@@ -598,25 +704,21 @@
             }
 
             const newRounds = entry.roundsLeft - 1;
-            const expired = newRounds <= 0;
+            const expired   = newRounds <= 0;
 
             if (!noDmg && c.type === 'npc') c.hp = Math.max(0, c.hp - total);
-            if (expired) {
-                c.ailments.splice(ailIdx, 1);
-            } else {
-                entry.roundsLeft = newRounds;
-            }
+            if (expired) { c.ailments.splice(ailIdx, 1); } else { entry.roundsLeft = newRounds; }
 
             save(); renderEncounters();
 
-            const dmgText = noDmg ? 'no damage' : `${total} dmg (${ail.damage})`;
-            showToast(`🩸 ${entry.name} on ${c.name}: ${dmgText}${expired ? ' — expired!' : ` — ${newRounds} rd${newRounds === 1 ? '' : 's'} left`}`);
+            const dmgText = noDmg ? 'no damage' : total + ' dmg (' + ail.damage + ')';
+            showToast('🩸 ' + entry.name + ' on ' + c.name + ': ' + dmgText + (expired ? ' — expired!' : ' — ' + newRounds + ' rd' + (newRounds === 1 ? '' : 's') + ' left'));
         }
 
         function renderAilmentControl(e, c) {
             if (!c.ailments) c.ailments = [];
             const pills = c.ailments.map((entry, idx) => {
-                const ail = ailmentLibrary.find(a => a.name === entry.name);
+                const ail      = ailmentLibrary.find(a => a.name === entry.name);
                 const dmgLabel = ail ? (ail.damage === 'none' ? 'no dmg' : ail.damage) : '?';
                 return [
                     '<div class="flex gap-1 w-full">',
@@ -637,12 +739,25 @@
                 '<select id="ail-sel-', e.id, '-', c.id, '"',
                 ' onchange="assignAilment(', e.id, ',', c.id, ',this.value);this.selectedIndex=0;"',
                 ' class="bg-gray-900 p-1 rounded text-xs w-full mt-1">',
-                '<option value="">+ Assign Ailment</option>',
-                opts,
-                '</select>'
+                '<option value="">+ Assign Ailment</option>', opts, '</select>'
             ].join('');
 
             return '<div class="space-y-1">' + pills + dropdown + '</div>';
+        }
+
+        // ── Attack rolling ───────────────────────────────────────────────
+        function rollAttack(eId, cId, atkIdx) {
+            const e = encounters.find(en => en.id === eId);
+            const c = e?.combatants.find(co => co.id === cId);
+            if (!c || !c.attacks) return;
+            const atk = c.attacks[atkIdx];
+            if (!atk) return;
+
+            let total = 0;
+            for (let i = 0; i < atk.count; i++) total += Math.floor(Math.random() * atk.die) + 1;
+            total += atk.bonus || 0;
+
+            showToast('⚔ ' + atk.name + ': ' + total + ' ' + atk.damageType + ' dmg (' + atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '') + ')');
         }
 
         // ── Encounters ───────────────────────────────────────────────────
@@ -657,17 +772,29 @@
         function confirmNPCLevel() {
             const level = parseInt(document.getElementById('modal-level-input').value) || 1;
             if (pendingNPC) {
-                const e = encounters.find(en => en.id === pendingNPC.eId);
-                if (e) {
-                    const baseHp = level * 2 + 10;
-                    const finalHp = pendingNPC.isBoss ? baseHp * 2 : baseHp;
+                const e   = encounters.find(en => en.id === pendingNPC.eId);
+                const src = pendingNPC.srcNPC;
+                if (e && src) {
+                    // Use real SRD stats if available, scale otherwise
+                    // SRD monsters: use real stat block values
+                    // Custom monsters: use MM-accurate CR lookup table
+                    const crNum = parseFloat(src.cr) || 0;
+                    const hp  = src.baseHp      || crToBaseHp(crNum);
+                    const ac  = src.ac          || crToAC(crNum);
+                    const per = src.perception  || Math.max(0, Math.floor(crNum / 4));
+                    const xp  = src.xpByCR      || crToXP(crNum);
+                    const finalHp = src.isBoss ? hp * 2 : hp;
+
                     e.combatants.push({
-                        id: Date.now(), name: pendingNPC.name, level,
-                        xp: level * 10 + 5, hp: finalHp, maxHp: finalHp,
-                        ac: level + 10, perception: level + 2, init: 0,
-                        type: 'npc', isBoss: pendingNPC.isBoss,
-                        weapon: null, ailments: [],
-                        resistance: pendingNPC.resistance
+                        id: Date.now(), name: src.name, level,
+                        xp: xp, hp: finalHp, maxHp: finalHp,
+                        ac: ac, perception: per,
+                        init: Math.floor(Math.random() * 20) + 1,
+                        type: 'npc', isBoss: src.isBoss,
+                        attacks: src.attacks || [],
+                        ailments: [],
+                        resistance: src.resistance,
+                        cr: src.cr || level,
                     });
                     save(); renderEncounters();
                 }
@@ -681,11 +808,6 @@
                 e.combatants.push({ id: Date.now(), name: pName, init: 0, type: 'player', ailments: [] });
                 save(); renderEncounters();
             }
-        }
-
-        function assignWeapon(eId, cId, weaponName) {
-            const c = encounters.find(en => en.id === eId)?.combatants.find(co => co.id === cId);
-            if (c) { c.weapon = weaponName; save(); renderEncounters(); }
         }
 
         function updateInit(eId, cId, val) {
@@ -705,96 +827,157 @@
 
         function renderEncounters() {
             document.getElementById('encounter-list').innerHTML = encounters.map(e => {
-                const sorted = [...e.combatants].sort((a, b) => b.init - a.init);
+                const sorted   = [...e.combatants].sort((a, b) => b.init - a.init);
                 const earnedXP = e.combatants.reduce((s, c) => s + (c.type === 'npc' && c.hp === 0 ? (c.xp || 0) : 0), 0);
                 const totalXP  = e.combatants.reduce((s, c) => s + (c.type === 'npc' ? (c.xp || 0) : 0), 0);
-                const isExp = expandedEncounters.has(e.id);
+                const isExp    = expandedEncounters.has(e.id);
 
-                return `<div class="bg-gray-800 p-4 rounded border border-gray-700">
-                    <div class="flex items-center gap-2 mb-2">
-                        <button onclick="expandedEncounters.has(${e.id})?expandedEncounters.delete(${e.id}):expandedEncounters.add(${e.id});renderEncounters();" class="text-yellow-500 font-bold text-lg w-6">${isExp ? '▼' : '▶'}</button>
-                        ${editingEncounterName.has(e.id)
-                            ? `<input id="ename-${e.id}" value="${e.name}" class="bg-gray-900 border border-gray-600 rounded p-1 flex-1 text-sm">
-                               <button onclick="saveEncounterName(${e.id},document.getElementById('ename-${e.id}'))" class="bg-green-700 px-2 py-1 rounded font-bold text-xs">Save</button>`
-                            : `<span class="flex-1 font-bold">${e.name}</span>`}
-                        <span class="text-xs font-mono ${totalXP > 0 && earnedXP === totalXP ? 'text-green-400' : 'text-yellow-400'}">XP ${earnedXP}/${totalXP}</span>
-                    </div>
-                    ${isExp ? `
-                    <div class="flex gap-2 mb-3">
-                        <select onchange="const n=npcLibrary.find(x=>x.name===this.value);if(n){pendingNPC={eId:${e.id},name:n.name,isBoss:n.isBoss,resistance:n.resistance};document.getElementById('npc-modal').classList.remove('hidden');}this.value='';" class="bg-gray-700 p-2 rounded text-sm flex-1">
-                            <option value="">+ NPC</option>${npcLibrary.map(n => `<option value="${n.name}">${n.name}</option>`).join('')}
-                        </select>
-                        <select onchange="if(this.value){addPlayerToEncounter(${e.id},this.value);this.value='';}" class="bg-gray-700 p-2 rounded text-sm flex-1">
-                            <option value="">+ Player</option>${players.map(p => `<option value="${p.name}">${p.name}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="space-y-2">${sorted.map(c => {
-                        const w = weapons.find(we => we.name.toLowerCase() === (c.weapon || '').toLowerCase());
-                        const isDead = c.type === 'npc' && c.hp === 0;
-                        return `<div class="bg-gray-700 p-2 rounded text-sm relative">
-                            ${isDead ? `<div class="absolute inset-0 bg-red-900/90 flex flex-col items-center justify-center font-black text-2xl tracking-widest z-10 rounded"><div>DEAD</div><div class="text-sm font-normal">XP: ${c.xp}</div></div>` : ''}
-                            <div class="flex justify-between items-center mb-2">
-                                <div class="flex items-center gap-2">
-                                    ${(c.init > 0 && !editingInit.has(c.id))
-                                        ? `<span class="w-10 text-center font-bold font-mono text-yellow-300 text-sm">${c.init}</span><button onclick="editingInit.add(${c.id});renderEncounters();" class="text-gray-500 text-xs">✎</button>`
-                                        : `<input type="number" placeholder="Init" onchange="updateInit(${e.id},${c.id},this.value)" class="w-14 bg-gray-900 p-1 text-center rounded font-mono border border-gray-600 text-sm">`}
-                                    <span class="font-bold">${c.name}${c.isBoss ? ' 👑' : ''}</span>
-                                </div>
-                                ${c.type === 'npc' ? `<div class="flex gap-1 items-center ${isDead ? 'opacity-40' : ''}">
-                                    <button onclick="modifyHp(${e.id},${c.id},-1)" class="bg-red-900 px-2 py-1 rounded font-bold">-1</button>
-                                    <button onclick="modifyHp(${e.id},${c.id},-5)" class="bg-red-900 px-2 py-1 rounded font-bold">-5</button>
-                                    <span class="font-mono font-bold text-sm pl-1">${c.hp}/${c.maxHp}</span>
-                                </div>` : ''}
-                            </div>
-                            ${c.type === 'npc' ? `
-                                <div class="text-xs text-gray-400 mb-2">AC ${c.ac} · Perc ${c.perception}${c.resistance !== 'None' ? ' · Res: ' + c.resistance : ''}</div>
-                                <div class="mb-2">${c.weapon
-                                    ? `<button onclick="rollDamage('${c.weapon}')" class="bg-blue-800 p-2 rounded text-xs w-full text-left">⚔ ${c.weapon} ${w ? '(' + w.count + 'D' + w.type + '+' + w.bonus + ')' : ''}</button>`
-                                    : `<select onchange="assignWeapon(${e.id},${c.id},this.value)" class="bg-gray-900 p-1 rounded text-xs w-full"><option value="">Assign Weapon</option>${weapons.map(w => `<option value="${w.name}">${w.name}</option>`).join('')}</select>`}
-                                </div>
-                                ${renderAilmentControl(e, c)}
-                            ` : renderAilmentControl(e, c)}
-                        </div>`;
-                    }).join('')}</div>` : ''}
-                </div>`;
+                return '<div class="bg-gray-800 p-4 rounded border border-gray-700">'
+                + '<div class="flex items-center gap-2 mb-2">'
+                + '<button onclick="expandedEncounters.has(' + e.id + ')?expandedEncounters.delete(' + e.id + '):expandedEncounters.add(' + e.id + ');renderEncounters();" class="text-yellow-500 font-bold text-lg w-6">' + (isExp ? '▼' : '▶') + '</button>'
+                + (editingEncounterName.has(e.id)
+                    ? '<input id="ename-' + e.id + '" value="' + e.name + '" class="bg-gray-900 border border-gray-600 rounded p-1 flex-1 text-sm"><button onclick="saveEncounterName(' + e.id + ',document.getElementById(\'ename-' + e.id + '\'))" class="bg-green-700 px-2 rounded font-bold text-xs">Save</button>'
+                    : '<span class="flex-1 font-bold">' + e.name + '</span>')
+                + '<span class="text-xs font-mono ' + (totalXP > 0 && earnedXP === totalXP ? 'text-green-400' : 'text-yellow-400') + '">XP ' + earnedXP.toLocaleString() + '/' + totalXP.toLocaleString() + '</span>'
+                + '</div>'
+                + (isExp ? renderEncounterBody(e, sorted) : '')
+                + '</div>';
             }).join('');
         }
 
-        // ── Init renders ─────────────────────────────────────────────────
-        renderWeapons(); renderPlayers(); renderLibNPCs(); renderAilmentLibrary(); renderEncounters();
+        function renderEncounterBody(e, sorted) {
+            const npcOpts    = npcLibrary.map(n => '<option value="' + n.name.replace(/"/g, '&quot;') + '">' + n.name + (n.cr ? ' CR' + n.cr : '') + '</option>').join('');
+            const playerOpts = players.map(p => '<option value="' + p.name.replace(/"/g, '&quot;') + '">' + p.name + '</option>').join('');
 
-        // ── Service Worker registration ───────────────────────────────────
+            let html = '<div class="flex gap-2 mb-3">'
+                + '<select onchange="const n=npcLibrary.find(x=>x.name===this.value);if(n){pendingNPC={eId:' + e.id + ',srcNPC:n};document.getElementById(\'npc-modal\').classList.remove(\'hidden\');}this.value=\'\';" class="bg-gray-700 p-2 rounded text-xs flex-1">'
+                + '<option value="">+ NPC</option>' + npcOpts + '</select>'
+                + '<select onchange="if(this.value){addPlayerToEncounter(' + e.id + ',this.value);this.value=\'\';}" class="bg-gray-700 p-2 rounded text-xs flex-1">'
+                + '<option value="">+ Player</option>' + playerOpts + '</select>'
+                + '</div>'
+                + '<div class="space-y-2">' + sorted.map(c => renderCombatant(e, c)).join('') + '</div>';
+            return html;
+        }
+
+        function renderCombatant(e, c) {
+            const isDead = c.type === 'npc' && c.hp === 0;
+            const xpDisplay  = c.xp ? c.xp.toLocaleString() + ' XP' : '0 XP';
+            const crDisplay  = c.cr ? ' (CR ' + c.cr + ')' : '';
+            const deadOverlay = isDead ? '<div class="absolute inset-0 bg-red-900/90 flex flex-col items-center justify-center font-black text-2xl tracking-widest z-10 rounded"><div>DEAD</div><div class="text-sm font-normal mt-1">' + xpDisplay + crDisplay + '</div></div>' : '';
+
+            // Initiative display
+            const initHtml = c.type === 'npc'
+                ? '<span class="w-10 text-center font-bold font-mono text-yellow-300 text-sm" title="Auto-rolled">' + c.init + '</span><span class="text-gray-600 text-xs">🎲</span>'
+                : (c.init > 0 && !editingInit.has(c.id))
+                    ? '<span class="w-10 text-center font-bold font-mono text-yellow-300 text-sm">' + c.init + '</span><button onclick="editingInit.add(' + c.id + ');renderEncounters();" class="text-gray-500 text-xs">✎</button>'
+                    : '<input type="number" placeholder="Init" onchange="updateInit(' + e.id + ',' + c.id + ',this.value)" class="w-14 bg-gray-900 p-1 text-center rounded font-mono border border-gray-600 text-sm">';
+
+            // HP controls
+            const hpHtml = c.type === 'npc'
+                ? '<div class="flex gap-1 items-center ' + (isDead ? 'opacity-40' : '') + '">'
+                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',-1)" class="bg-red-900 px-2 py-1 rounded font-bold text-sm">-1</button>'
+                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',-5)" class="bg-red-900 px-2 py-1 rounded font-bold text-sm">-5</button>'
+                  + '<span class="font-mono font-bold text-sm pl-1">' + c.hp + '/' + c.maxHp + '</span></div>'
+                : '';
+
+            // Attacks (NPC only)
+            const attacksHtml = c.type === 'npc' && c.attacks && c.attacks.length > 0
+                ? '<div class="space-y-1 mb-2">'
+                  + c.attacks.map((atk, idx) => {
+                      const dice = atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '');
+                      const typeEmoji = {slashing:'⚔',piercing:'🗡',bludgeoning:'🔨',fire:'🔥',cold:'❄',lightning:'⚡',poison:'☠',acid:'🧪',necrotic:'💀',radiant:'✨',psychic:'🧠',force:'💥',thunder:'🌩'}[atk.damageType] || '⚔';
+                      return '<button onclick="rollAttack(' + e.id + ',' + c.id + ',' + idx + ')" class="bg-blue-900 p-1 rounded text-xs w-full text-left">'
+                          + typeEmoji + ' ' + atk.name + ' (' + dice + ' ' + atk.damageType + ')</button>';
+                  }).join('')
+                  + '</div>'
+                : (c.type === 'npc' ? '<div class="text-gray-600 text-xs mb-2">No attacks defined</div>' : '');
+
+            // NPC stat line
+            const statLine = c.type === 'npc'
+                ? '<div class="text-xs text-gray-400 mb-2">AC ' + c.ac + ' · Perc ' + c.perception + (c.resistance !== 'None' ? ' · Res: ' + c.resistance : '') + (c.cr ? ' · CR ' + c.cr : '') + '</div>'
+                : '';
+
+            return '<div class="bg-gray-700 p-2 rounded text-sm relative">'
+                + deadOverlay
+                + '<div class="flex justify-between items-center mb-1">'
+                + '<div class="flex items-center gap-2">' + initHtml + '<span class="font-bold">' + c.name + (c.isBoss ? ' 👑' : '') + '</span></div>'
+                + hpHtml
+                + '</div>'
+                + statLine
+                + attacksHtml
+                + renderAilmentControl(e, c)
+                + '</div>';
+        }
+
+        // ── Default ailments ─────────────────────────────────────────────
+        const DEFAULT_AILMENTS = [
+            { name:'Poison',          duration:'3', damage:'1d4' },
+            { name:'Acid Burn',       duration:'2', damage:'1d6' },
+            { name:'Bleeding',        duration:'3', damage:'1d4' },
+            { name:'Fire (On Fire)',  duration:'2', damage:'1d6' },
+            { name:'Necrotic Rot',    duration:'3', damage:'1d6' },
+            { name:'Lightning Shock', duration:'1', damage:'1d6' },
+            { name:'Frostbite',       duration:'2', damage:'1d4' },
+            { name:'Blinded',         duration:'2', damage:'none' },
+            { name:'Charmed',         duration:'2', damage:'none' },
+            { name:'Deafened',        duration:'2', damage:'none' },
+            { name:'Frightened',      duration:'2', damage:'none' },
+            { name:'Grappled',        duration:'1', damage:'none' },
+            { name:'Incapacitated',   duration:'1', damage:'none' },
+            { name:'Paralyzed',       duration:'2', damage:'none' },
+            { name:'Poisoned',        duration:'3', damage:'none' },
+            { name:'Prone',           duration:'1', damage:'none' },
+            { name:'Restrained',      duration:'2', damage:'none' },
+            { name:'Stunned',         duration:'1', damage:'none' },
+            { name:'Unconscious',     duration:'2', damage:'none' },
+        ];
+
+        if (ailmentLibrary.length === 0) { ailmentLibrary = DEFAULT_AILMENTS.map(a => ({...a})); save(); }
+
+        // ── Boot ─────────────────────────────────────────────────────────
+        renderPlayers();
+        renderAilmentLibrary();
+        renderEncounters();
+
+        // Load bestiary when NPC tab is first visited
+        document.querySelector('[data-label="NPC Library"]').addEventListener('click', () => {
+            if (!document.getElementById('bestiary-status').dataset.loaded) {
+                document.getElementById('bestiary-status').dataset.loaded = '1';
+                loadBestiary();
+            }
+        }, { once: false });
+
+        // If already on NPCs page, kick off load immediately
+        if (document.getElementById('npcs').classList.contains('active-page')) loadBestiary();
+        else renderLibNPCs();
+
+        // ── Service Worker ───────────────────────────────────────────────
         if ('serviceWorker' in navigator) {
             const swCode = `
-const CACHE = 'dmm-v1';
-const ASSETS = [location.href];
-self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS))));
-self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))));
-self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).then(res => { const clone = res.clone(); caches.open(CACHE).then(c => c.put(e.request, clone)); return res; }))));
+const CACHE='dmm-v2';
+const ASSETS=[location.href];
+self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));
+self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));
+self.addEventListener('fetch',e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{const clone=res.clone();caches.open(CACHE).then(c=>c.put(e.request,clone));return res;}))));
             `.trim();
-            const blob = new Blob([swCode], { type: 'application/javascript' });
+            const blob  = new Blob([swCode], { type: 'application/javascript' });
             const swUrl = URL.createObjectURL(blob);
             navigator.serviceWorker.register(swUrl).catch(() => {});
         }
 
-        // ── Web App Manifest (injected dynamically) ───────────────────────
+        // ── Manifest ─────────────────────────────────────────────────────
         const manifest = {
-            name: 'Dungeon Master Mate',
-            short_name: 'DMM',
-            start_url: location.href,
-            display: 'standalone',
-            background_color: '#111827',
-            theme_color: '#1f2937',
-            icons: [{
-                src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%231f2937'/%3E%3Ctext x='96' y='130' font-size='100' text-anchor='middle' fill='%23eab308'%3E⚔%3C/text%3E%3C/svg%3E",
-                sizes: '192x192', type: 'image/svg+xml'
-            }]
+            name:'Dungeon Master Mate', short_name:'DMM',
+            start_url: location.href, display:'standalone',
+            background_color:'#111827', theme_color:'#1f2937',
+            icons:[{ src:"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%231f2937'/%3E%3Ctext x='96' y='130' font-size='100' text-anchor='middle' fill='%23eab308'%3E⚔%3C/text%3E%3C/svg%3E", sizes:'192x192', type:'image/svg+xml' }]
         };
-        const mBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
-        const mUrl = URL.createObjectURL(mBlob);
+        const mBlob = new Blob([JSON.stringify(manifest)], { type:'application/json' });
+        const mUrl  = URL.createObjectURL(mBlob);
         const mLink = document.createElement('link');
         mLink.rel = 'manifest'; mLink.href = mUrl;
         document.head.appendChild(mLink);
+
     </script>
 </body>
 </html>
