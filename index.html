@@ -48,8 +48,25 @@
                 <h3 class="text-lg font-bold">Add NPC to Encounter</h3>
                 <button onclick="closeModal('npc-picker-modal')" class="text-gray-400 text-xl px-2">✕</button>
             </div>
-            <input id="npc-picker-search" oninput="renderNpcPickerResults()" placeholder="🔍 Search monsters..." class="p-2 bg-gray-900 rounded border border-gray-700 w-full text-sm mb-3" autocomplete="off">
+            <input id="npc-picker-search" oninput="renderNpcPickerResults()" placeholder="🔍 Search monsters..." class="p-2 bg-gray-900 rounded border border-gray-700 w-full text-sm mb-2" autocomplete="off">
+            <select id="npc-picker-sort" onchange="renderNpcPickerResults()" class="p-2 bg-gray-900 rounded border border-gray-700 w-full text-sm mb-3">
+                <option value="name-asc">Sort: Name (A-Z)</option>
+                <option value="name-desc">Sort: Name (Z-A)</option>
+                <option value="cr-asc">Sort: CR (Low to High)</option>
+                <option value="cr-desc">Sort: CR (High to Low)</option>
+            </select>
             <div id="npc-picker-results" class="overflow-y-auto flex-1 space-y-1"></div>
+        </div>
+    </div>
+
+    <div id="delete-encounter-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-gray-800 p-6 rounded-lg border border-red-700 w-full max-w-sm">
+            <h3 class="text-lg font-bold mb-2 text-red-500">Delete Encounter?</h3>
+            <p class="mb-4 text-gray-300 text-sm">This will permanently delete "<span id="delete-encounter-name" class="font-bold"></span>" and all its combatants. This cannot be undone.</p>
+            <div class="flex justify-end gap-2">
+                <button onclick="closeModal('delete-encounter-modal')" class="px-4 py-2 bg-gray-600 rounded">Cancel</button>
+                <button onclick="confirmDeleteEncounter()" class="px-4 py-2 bg-red-700 rounded font-bold">Delete</button>
+            </div>
         </div>
     </div>
 
@@ -160,10 +177,10 @@
             </div>
             <!-- Search -->
             <div class="bg-gray-800 p-3 rounded border border-gray-700 mb-3">
-                <input id="lib-search" oninput="renderLibNPCs()" placeholder="🔍 Search NPCs..." class="p-2 bg-gray-900 rounded border border-gray-700 w-full text-sm">
+                <input id="lib-search" oninput="npcLibPage=0;renderLibNPCs()" placeholder="🔍 Search NPCs..." class="p-2 bg-gray-900 rounded border border-gray-700 w-full text-sm">
             </div>
             <!-- Custom NPC form -->
-            <details class="bg-gray-800 rounded border border-gray-700 mb-4">
+            <div id="lib-pager" class="flex items-center justify-between gap-2 mb-4"></div>\n            <details class="bg-gray-800 rounded border border-gray-700 mb-4">
                 <summary class="p-3 font-bold text-yellow-500 cursor-pointer text-sm">+ Add Custom NPC</summary>
                 <div class="p-3 space-y-2 border-t border-gray-700">
                     <input id="lib-name" placeholder="NPC Name" class="p-2 bg-gray-900 rounded border border-gray-700 w-full text-sm">
@@ -648,13 +665,23 @@
             save(); renderLibNPCs();
         }
 
+        const NPC_PAGE_SIZE = 100;
+        let npcLibPage = 0;
+
         function renderLibNPCs() {
             const q = (document.getElementById('lib-search')?.value || '').toLowerCase();
             const filtered = npcLibrary
                 .map((npc, i) => ({ npc, i }))
                 .filter(({ npc }) => !q || npc.name.toLowerCase().includes(q));
 
-            document.getElementById('lib-list').innerHTML = filtered.slice(0, 100).map(({ npc, i }) => {
+            const totalPages = Math.max(1, Math.ceil(filtered.length / NPC_PAGE_SIZE));
+            if (npcLibPage >= totalPages) npcLibPage = totalPages - 1;
+            if (npcLibPage < 0) npcLibPage = 0;
+
+            const pageStart = npcLibPage * NPC_PAGE_SIZE;
+            const pageItems = filtered.slice(pageStart, pageStart + NPC_PAGE_SIZE);
+
+            document.getElementById('lib-list').innerHTML = pageItems.map(({ npc, i }) => {
                 const atkSummary = (npc.attacks || []).map(a =>
                     a.name + ' (' + a.count + 'd' + a.die + (a.bonus ? '+' + a.bonus : '') + ')'
                 ).join(', ') || 'No attacks';
@@ -670,11 +697,24 @@
                     + '</div>';
             }).join('');
 
-            const shown = Math.min(filtered.length, 100);
-            const total = filtered.length;
+            // Pagination controls
+            const pagerEl = document.getElementById('lib-pager');
+            if (pagerEl) {
+                if (totalPages <= 1) {
+                    pagerEl.innerHTML = '';
+                } else {
+                    const rangeStart = filtered.length === 0 ? 0 : pageStart + 1;
+                    const rangeEnd = Math.min(pageStart + NPC_PAGE_SIZE, filtered.length);
+                    pagerEl.innerHTML =
+                        '<button onclick="npcLibPage--;renderLibNPCs();" ' + (npcLibPage === 0 ? 'disabled' : '') + ' class="bg-gray-700 px-3 py-2 rounded text-sm disabled:opacity-30">◀ Prev</button>'
+                        + '<span class="text-xs text-gray-400">' + rangeStart + '–' + rangeEnd + ' of ' + filtered.length + ' (page ' + (npcLibPage + 1) + '/' + totalPages + ')</span>'
+                        + '<button onclick="npcLibPage++;renderLibNPCs();" ' + (npcLibPage >= totalPages - 1 ? 'disabled' : '') + ' class="bg-gray-700 px-3 py-2 rounded text-sm disabled:opacity-30">Next ▶</button>';
+                }
+            }
+
             const status = document.getElementById('bestiary-status');
             if (status && !status.textContent.includes('Loading')) {
-                status.textContent = 'Showing ' + shown + ' of ' + total + ' monsters' + (q ? ' matching "' + q + '"' : '');
+                status.textContent = filtered.length + ' monsters' + (q ? ' matching "' + q + '"' : '') + ' total';
             }
         }
 
@@ -800,6 +840,26 @@
             save(); renderEncounters();
         }
 
+        let pendingDeleteEncounterId = null;
+
+        function requestDeleteEncounter(eId) {
+            pendingDeleteEncounterId = eId;
+            const e = encounters.find(en => en.id === eId);
+            document.getElementById('delete-encounter-name').textContent = e ? e.name : '';
+            document.getElementById('delete-encounter-modal').classList.remove('hidden');
+        }
+
+        function confirmDeleteEncounter() {
+            if (pendingDeleteEncounterId !== null) {
+                encounters = encounters.filter(en => en.id !== pendingDeleteEncounterId);
+                expandedEncounters.delete(pendingDeleteEncounterId);
+                editingEncounterName.delete(pendingDeleteEncounterId);
+                save(); renderEncounters();
+            }
+            pendingDeleteEncounterId = null;
+            closeModal('delete-encounter-modal');
+        }
+
         function confirmNPCLevel() {
             const level = parseInt(document.getElementById('modal-level-input').value) || 1;
             if (pendingNPC) {
@@ -870,6 +930,7 @@
                     ? '<input id="ename-' + e.id + '" value="' + e.name + '" class="bg-gray-900 border border-gray-600 rounded p-1 flex-1 text-sm"><button onclick="saveEncounterName(' + e.id + ',document.getElementById(\'ename-' + e.id + '\'))" class="bg-green-700 px-2 rounded font-bold text-xs">Save</button>'
                     : '<span class="flex-1 font-bold">' + e.name + '</span>')
                 + '<span class="text-xs font-mono ' + (totalXP > 0 && earnedXP === totalXP ? 'text-green-400' : 'text-yellow-400') + '">XP ' + earnedXP.toLocaleString() + '/' + totalXP.toLocaleString() + '</span>'
+                + '<button onclick="requestDeleteEncounter(' + e.id + ')" class="text-red-500 text-sm px-1">🗑️</button>'
                 + '</div>'
                 + (isExp ? renderEncounterBody(e, sorted) : '')
                 + '</div>';
@@ -895,12 +956,34 @@
             document.getElementById('npc-modal').classList.remove('hidden');
         }
 
+        function crToSortableNumber(cr) {
+            if (cr === undefined || cr === null) return -1;
+            const s = String(cr).trim();
+            if (s === '1/8') return 0.125;
+            if (s === '1/4') return 0.25;
+            if (s === '1/2') return 0.5;
+            if (s === '?' || s === 'Custom' || s === '') return -1;
+            const n = parseFloat(s);
+            return isNaN(n) ? -1 : n;
+        }
+
         function renderNpcPickerResults() {
-            const q = (document.getElementById('npc-picker-search').value || '').toLowerCase();
+            const q    = (document.getElementById('npc-picker-search').value || '').toLowerCase();
+            const sort = document.getElementById('npc-picker-sort')?.value || 'name-asc';
             const resultsEl = document.getElementById('npc-picker-results');
-            const filtered = npcLibrary
+            let filtered = npcLibrary
                 .map((npc, idx) => ({ npc, idx }))
                 .filter(({ npc }) => !q || npc.name.toLowerCase().includes(q));
+
+            filtered.sort((a, b) => {
+                if (sort === 'name-asc')  return a.npc.name.localeCompare(b.npc.name);
+                if (sort === 'name-desc') return b.npc.name.localeCompare(a.npc.name);
+                const crA = crToSortableNumber(a.npc.cr);
+                const crB = crToSortableNumber(b.npc.cr);
+                if (sort === 'cr-asc')  return crA - crB;
+                if (sort === 'cr-desc') return crB - crA;
+                return 0;
+            });
 
             if (filtered.length === 0) {
                 resultsEl.innerHTML = '<div class="text-gray-500 text-sm text-center py-4">No monsters match "' + q + '"</div>';
