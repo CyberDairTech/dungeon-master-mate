@@ -42,6 +42,17 @@
         </div>
     </div>
 
+    <div id="npc-picker-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-start justify-center p-4 z-50 pt-16">
+        <div class="bg-gray-800 p-4 rounded-lg border border-gray-700 w-full max-w-sm max-h-[80vh] flex flex-col">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-lg font-bold">Add NPC to Encounter</h3>
+                <button onclick="closeModal('npc-picker-modal')" class="text-gray-400 text-xl px-2">✕</button>
+            </div>
+            <input id="npc-picker-search" oninput="renderNpcPickerResults()" placeholder="🔍 Search monsters..." class="p-2 bg-gray-900 rounded border border-gray-700 w-full text-sm mb-3" autocomplete="off">
+            <div id="npc-picker-results" class="overflow-y-auto flex-1 space-y-1"></div>
+        </div>
+    </div>
+
     <div id="confirm-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-center justify-center p-4 z-50">
         <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 w-full max-w-sm">
             <h3 class="text-lg font-bold mb-4">Weapon Exists</h3>
@@ -865,13 +876,55 @@
             }).join('');
         }
 
+        // ── NPC Picker (searchable) ───────────────────────────────────────
+        let npcPickerEncounterId = null;
+
+        function openNpcPicker(eId) {
+            npcPickerEncounterId = eId;
+            document.getElementById('npc-picker-search').value = '';
+            document.getElementById('npc-picker-modal').classList.remove('hidden');
+            renderNpcPickerResults();
+            setTimeout(() => document.getElementById('npc-picker-search').focus(), 50);
+        }
+
+        function pickNpcFromList(npcIdx) {
+            const n = npcLibrary[npcIdx];
+            if (!n) return;
+            pendingNPC = { eId: npcPickerEncounterId, srcNPC: n };
+            closeModal('npc-picker-modal');
+            document.getElementById('npc-modal').classList.remove('hidden');
+        }
+
+        function renderNpcPickerResults() {
+            const q = (document.getElementById('npc-picker-search').value || '').toLowerCase();
+            const resultsEl = document.getElementById('npc-picker-results');
+            const filtered = npcLibrary
+                .map((npc, idx) => ({ npc, idx }))
+                .filter(({ npc }) => !q || npc.name.toLowerCase().includes(q));
+
+            if (filtered.length === 0) {
+                resultsEl.innerHTML = '<div class="text-gray-500 text-sm text-center py-4">No monsters match "' + q + '"</div>';
+                return;
+            }
+
+            resultsEl.innerHTML = filtered.slice(0, 60).map(({ npc, idx }) => {
+                const atkCount = (npc.attacks || []).length;
+                return '<button onclick="pickNpcFromList(' + idx + ')" class="w-full text-left bg-gray-700 hover:bg-gray-600 p-2 rounded text-sm flex justify-between items-center">'
+                    + '<span>' + npc.name + (npc.isBoss ? ' 👑' : '') + '</span>'
+                    + '<span class="text-gray-400 text-xs">CR ' + (npc.cr || '?') + ' · ' + atkCount + ' atk' + (atkCount === 1 ? '' : 's') + '</span>'
+                    + '</button>';
+            }).join('');
+
+            if (filtered.length > 60) {
+                resultsEl.innerHTML += '<div class="text-gray-500 text-xs text-center py-2">+' + (filtered.length - 60) + ' more — refine your search</div>';
+            }
+        }
+
         function renderEncounterBody(e, sorted) {
-            const npcOpts    = npcLibrary.map(n => '<option value="' + n.name.replace(/"/g, '&quot;') + '">' + n.name + (n.cr ? ' CR' + n.cr : '') + '</option>').join('');
             const playerOpts = players.map(p => '<option value="' + p.name.replace(/"/g, '&quot;') + '">' + p.name + '</option>').join('');
 
             let html = '<div class="flex gap-2 mb-3">'
-                + '<select onchange="const n=npcLibrary.find(x=>x.name===this.value);if(n){pendingNPC={eId:' + e.id + ',srcNPC:n};document.getElementById(\'npc-modal\').classList.remove(\'hidden\');}this.value=\'\';" class="bg-gray-700 p-2 rounded text-xs flex-1">'
-                + '<option value="">+ NPC</option>' + npcOpts + '</select>'
+                + '<button onclick="openNpcPicker(' + e.id + ')" class="bg-gray-700 p-2 rounded text-xs flex-1 text-left">🔍 + NPC</button>'
                 + '<select onchange="if(this.value){addPlayerToEncounter(' + e.id + ',this.value);this.value=\'\';}" class="bg-gray-700 p-2 rounded text-xs flex-1">'
                 + '<option value="">+ Player</option>' + playerOpts + '</select>'
                 + '</div>'
@@ -895,8 +948,9 @@
             // HP controls
             const hpHtml = c.type === 'npc'
                 ? '<div class="flex gap-1 items-center ' + (isDead ? 'opacity-40' : '') + '">'
-                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',-1)" class="bg-red-900 px-2 py-1 rounded font-bold text-sm">-1</button>'
-                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',-5)" class="bg-red-900 px-2 py-1 rounded font-bold text-sm">-5</button>'
+                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',-1)" class="bg-red-900 px-3 py-2 rounded font-bold text-base">-1</button>'
+                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',-5)" class="bg-red-900 px-3 py-2 rounded font-bold text-base">-5</button>'
+                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',-10)" class="bg-red-950 px-3 py-2 rounded font-bold text-base">-10</button>'
                   + '<span class="font-mono font-bold text-sm pl-1">' + c.hp + '/' + c.maxHp + '</span></div>'
                 : '';
 
@@ -906,7 +960,7 @@
                   + c.attacks.map((atk, idx) => {
                       const dice = atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '');
                       const typeEmoji = {slashing:'⚔',piercing:'🗡',bludgeoning:'🔨',fire:'🔥',cold:'❄',lightning:'⚡',poison:'☠',acid:'🧪',necrotic:'💀',radiant:'✨',psychic:'🧠',force:'💥',thunder:'🌩'}[atk.damageType] || '⚔';
-                      return '<button onclick="rollAttack(' + e.id + ',' + c.id + ',' + idx + ')" class="bg-blue-900 p-1 rounded text-xs w-full text-left">'
+                      return '<button onclick="rollAttack(' + e.id + ',' + c.id + ',' + idx + ')" class="bg-blue-900 p-3 rounded text-sm w-full text-left font-semibold">'
                           + typeEmoji + ' ' + atk.name + ' (' + dice + ' ' + atk.damageType + ')</button>';
                   }).join('')
                   + '</div>'
