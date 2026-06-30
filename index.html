@@ -143,7 +143,10 @@
         <!-- NPC LIBRARY -->
         <div id="npcs" class="page">
             <h2 class="text-2xl font-bold mb-4">NPC Library</h2>
-            <div id="bestiary-status" class="text-xs text-gray-400 mb-3 text-center"></div>
+            <div class="flex items-center justify-center gap-2 mb-3">
+                <div id="bestiary-status" class="text-xs text-gray-400 text-center"></div>
+                <button onclick="loadBestiary(true)" class="text-xs bg-gray-700 px-2 py-1 rounded">🔄 Refresh</button>
+            </div>
             <!-- Search -->
             <div class="bg-gray-800 p-3 rounded border border-gray-700 mb-3">
                 <input id="lib-search" oninput="renderLibNPCs()" placeholder="🔍 Search NPCs..." class="p-2 bg-gray-900 rounded border border-gray-700 w-full text-sm">
@@ -325,17 +328,18 @@
         // ── Bestiary loader ──────────────────────────────────────────────
         // Fetches all SRD monsters from Open5e and stores in localStorage.
         // Each NPC entry gets an `attacks` array: [{name, damageDice, bonus, damageType}]
-        async function loadBestiary() {
-            const CACHE_KEY = 'dmm_bestiary_v2';
+        async function loadBestiary(force) {
+            const CACHE_KEY = 'dmm_bestiary_v3';
             const STATUS_EL = document.getElementById('bestiary-status');
 
-            // Already loaded
-            if (localStorage.getItem(CACHE_KEY)) {
+            // Migration: wipe any pre-bestiary NPC data (old hand-typed entries with no attacks)
+            const hasLegacyData = npcLibrary.length > 0 && !npcLibrary.some(n => n.attacks && n.attacks.length > 0) && !npcLibrary.some(n => n.fromSRD);
+            if (hasLegacyData) { npcLibrary = []; }
+
+            // Already cached and not forcing a refresh
+            if (!force && localStorage.getItem(CACHE_KEY)) {
                 const cached = JSON.parse(localStorage.getItem(CACHE_KEY));
-                if (npcLibrary.length === 0) {
-                    npcLibrary = cached;
-                    save();
-                }
+                if (npcLibrary.length === 0) { npcLibrary = cached; save(); }
                 if (STATUS_EL) STATUS_EL.textContent = cached.length + ' monsters loaded from cache';
                 renderLibNPCs();
                 return;
@@ -344,35 +348,36 @@
             if (STATUS_EL) STATUS_EL.textContent = 'Loading bestiary from Open5e...';
 
             try {
-                let url = 'https://api.open5e.com/v1/monsters/?limit=100&document__slug=wotc-srd&format=json';
+                // v1 API: SRD 5.1 monsters use document__slug=srd
+                let url = 'https://api.open5e.com/v1/monsters/?limit=100&document__slug=srd&format=json';
                 let allMonsters = [];
 
                 while (url) {
                     const resp = await fetch(url);
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
                     const data = await resp.json();
+                    if (!data.results || data.results.length === 0) break;
                     allMonsters = allMonsters.concat(data.results);
                     url = data.next;
                     if (STATUS_EL) STATUS_EL.textContent = 'Loading... ' + allMonsters.length + ' monsters';
                 }
 
+                if (allMonsters.length === 0) throw new Error('Empty result set from Open5e');
+
                 const parsed = allMonsters.map(m => parseMonster(m));
                 localStorage.setItem(CACHE_KEY, JSON.stringify(parsed));
 
-                if (npcLibrary.length === 0) {
-                    npcLibrary = parsed;
-                    save();
-                }
+                npcLibrary = parsed;
+                save();
 
-                if (STATUS_EL) STATUS_EL.textContent = parsed.length + ' SRD monsters loaded';
+                const withAttacks = parsed.filter(p => p.attacks && p.attacks.length > 0).length;
+                if (STATUS_EL) STATUS_EL.textContent = parsed.length + ' SRD monsters loaded (' + withAttacks + ' with attacks)';
                 renderLibNPCs();
 
             } catch (err) {
                 console.warn('Bestiary load failed:', err);
-                if (STATUS_EL) STATUS_EL.textContent = 'Could not reach Open5e — using local defaults';
-                if (npcLibrary.length === 0) {
-                    npcLibrary = DEFAULT_NPCS;
-                    save();
-                }
+                if (STATUS_EL) STATUS_EL.textContent = 'Could not reach Open5e (' + err.message + ') — using local defaults';
+                if (npcLibrary.length === 0) { npcLibrary = DEFAULT_NPCS.map(n => ({...n})); save(); }
                 renderLibNPCs();
             }
         }
