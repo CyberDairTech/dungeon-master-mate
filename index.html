@@ -329,7 +329,7 @@
         // Fetches all SRD monsters from Open5e and stores in localStorage.
         // Each NPC entry gets an `attacks` array: [{name, damageDice, bonus, damageType}]
         async function loadBestiary(force) {
-            const CACHE_KEY = 'dmm_bestiary_v3';
+            const CACHE_KEY = 'dmm_bestiary_v4';
             const STATUS_EL = document.getElementById('bestiary-status');
 
             // Migration: wipe any pre-bestiary NPC data (old hand-typed entries with no attacks)
@@ -349,7 +349,7 @@
 
             try {
                 // v1 API: SRD 5.1 monsters use document__slug=srd
-                let url = 'https://api.open5e.com/v1/monsters/?limit=100&document__slug=srd&format=json';
+                let url = 'https://api.open5e.com/v1/monsters/?limit=100&document__slug=wotc-srd&format=json';
                 let allMonsters = [];
 
                 while (url) {
@@ -389,19 +389,34 @@
 
             actions.forEach(a => {
                 if (!a.damage_dice) return;
-                // Parse "2d6+3" or "1d8" style strings
-                const match = String(a.damage_dice).match(/(\d+)d(\d+)([+-]\d+)?/);
+                // damage_dice can look like "2d6+3", "1d8", "2d10+1d8" (multi-die), etc.
+                // Take the first dice group found, and combine with a separate damage_bonus field if present.
+                const diceStr = String(a.damage_dice);
+                const match = diceStr.match(/(\d+)d(\d+)/);
                 if (!match) return;
-                const count  = parseInt(match[1]);
-                const die    = parseInt(match[2]);
-                const bonus  = parseInt(match[3] || '0');
+                const count = parseInt(match[1]);
+                const die   = parseInt(match[2]);
+
+                // Bonus can come from an inline "+N" in damage_dice, or a separate damage_bonus field
+                let bonus = 0;
+                const inlineBonus = diceStr.match(/d\d+\s*([+-]\s*\d+)/);
+                if (inlineBonus) {
+                    bonus = parseInt(inlineBonus[1].replace(/\s+/g, ''));
+                } else if (typeof a.damage_bonus === 'number') {
+                    bonus = a.damage_bonus;
+                }
+
                 // Infer damage type from description text
-                const desc   = (a.desc || '').toLowerCase();
-                let dmgType  = 'bludgeoning';
-                const TYPES  = ['slashing','piercing','bludgeoning','fire','cold','lightning',
-                                 'poison','acid','necrotic','radiant','psychic','force','thunder'];
+                const desc  = (a.desc || '').toLowerCase();
+                let dmgType = 'bludgeoning';
+                const TYPES = ['slashing','piercing','bludgeoning','fire','cold','lightning',
+                                'poison','acid','necrotic','radiant','psychic','force','thunder'];
                 for (const t of TYPES) { if (desc.includes(t)) { dmgType = t; break; } }
-                attacks.push({ name: a.name, count, die, bonus, damageType: dmgType });
+
+                // Skip "Multiattack" entries — they describe a combo of other attacks, not a roll themselves
+                if (/^multiattack$/i.test(a.name || '')) return;
+
+                attacks.push({ name: a.name || 'Attack', count, die, bonus, damageType: dmgType });
             });
 
             // Determine resistance from damage_resistances field
