@@ -851,18 +851,24 @@
             const atk = c.attacks[atkIdx];
             if (!atk) return;
 
-            // Initialise recharge state on combatant if needed
             if (!c.rechargeState) c.rechargeState = {};
 
-            // If this attack has recharge, check if it's available
+            // If recharging, tick down the counter instead of attacking
             if (atk.rechargeOn != null) {
                 const state = c.rechargeState[atkIdx];
-                if (state && state.recharging) {
-                    showToast('⏳ ' + atk.name + ' is recharging! Roll ' + atk.rechargeOn + '+ on a d6 to recharge.');
+                if (state && state.roundsLeft > 0) {
+                    const newCount = state.roundsLeft - 1;
+                    c.rechargeState[atkIdx] = { roundsLeft: newCount };
+                    save(); renderEncounters();
+                    if (newCount === 0) {
+                        showToast('✅ ' + atk.name + ' has recharged and is ready!');
+                    } else {
+                        showToast('⏳ ' + atk.name + ' recharging — ' + newCount + ' round' + (newCount === 1 ? '' : 's') + ' left');
+                    }
                     return;
                 }
-                // Mark as used — needs recharge
-                c.rechargeState[atkIdx] = { recharging: true };
+                // Attack used — start countdown from rechargeOn value
+                c.rechargeState[atkIdx] = { roundsLeft: atk.rechargeOn };
                 save(); renderEncounters();
             }
 
@@ -871,24 +877,6 @@
             total += atk.bonus || 0;
 
             showToast('⚔ ' + atk.name + ': ' + total + ' ' + atk.damageType + ' dmg (' + atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '') + ')');
-        }
-
-        function rollRecharge(eId, cId, atkIdx) {
-            const e = encounters.find(en => en.id === eId);
-            const c = e?.combatants.find(co => co.id === cId);
-            if (!c || !c.attacks || !c.rechargeState) return;
-            const atk = c.attacks[atkIdx];
-            if (!atk || atk.rechargeOn == null) return;
-
-            const roll = Math.floor(Math.random() * 6) + 1;
-            const success = roll >= atk.rechargeOn;
-            if (success) {
-                c.rechargeState[atkIdx] = { recharging: false };
-                showToast('🎲 Recharge roll: ' + roll + ' — ✅ ' + atk.name + ' is recharged!');
-            } else {
-                showToast('🎲 Recharge roll: ' + roll + ' — ❌ ' + atk.name + ' needs ' + atk.rechargeOn + '+ (still recharging)');
-            }
-            save(); renderEncounters();
         }
 
         // ── Encounters ───────────────────────────────────────────────────
@@ -1117,27 +1105,23 @@
                       const avgRoll    = Math.round(atk.count * ((atk.die + 1) / 2) + (atk.bonus || 0));
                       const typeEmoji  = {slashing:'⚔',piercing:'🗡',bludgeoning:'🔨',fire:'🔥',cold:'❄',lightning:'⚡',poison:'☠',acid:'🧪',necrotic:'💀',radiant:'✨',psychic:'🧠',force:'💥',thunder:'🌩'}[atk.damageType] || '⚔';
                       const typeColor  = {slashing:'border-orange-700',piercing:'border-yellow-700',bludgeoning:'border-stone-600',fire:'border-red-700',cold:'border-blue-400',lightning:'border-yellow-400',poison:'border-green-700',acid:'border-lime-600',necrotic:'border-purple-800',radiant:'border-yellow-300',psychic:'border-pink-600',force:'border-indigo-500',thunder:'border-sky-600'}[atk.damageType] || 'border-gray-600';
-                      const hasRecharge = atk.rechargeOn != null;
-                      const rState      = hasRecharge && c.rechargeState && c.rechargeState[idx];
-                      const recharging  = rState && rState.recharging;
+                      const hasRecharge  = atk.rechargeOn != null;
+                      const rState       = hasRecharge && c.rechargeState && c.rechargeState[idx];
+                      const roundsLeft   = rState ? rState.roundsLeft : 0;
+                      const recharging   = hasRecharge && roundsLeft > 0;
                       const rechargeBadge = hasRecharge
-                          ? '<span class="text-xs font-bold px-1 rounded ml-1 ' + (recharging ? 'bg-red-800 text-red-200' : 'bg-green-800 text-green-200') + '">'
-                            + (recharging ? '⏳ Recharging' : '✅ ' + atk.rechargeOn + '-6') + '</span>'
-                          : '';
-                      const rechargeBtn = recharging
-                          ? '<button onclick="rollRecharge(' + e.id + ',' + c.id + ',' + idx + ')" class="shrink-0 bg-yellow-700 hover:bg-yellow-600 text-xs font-bold px-2 py-1 rounded ml-1">🎲 Roll</button>'
+                          ? '<span class="text-xs font-bold px-1 py-0 rounded ml-1 ' + (recharging ? (roundsLeft === 1 ? 'bg-yellow-700 text-yellow-100' : 'bg-red-900 text-red-200') : 'bg-green-900 text-green-300') + '">'
+                            + (recharging ? '⏳ ' + roundsLeft + ' rd' + (roundsLeft === 1 ? '' : 's') : '✅ Ready') + '</span>'
                           : '';
                       const btnClass = recharging
-                          ? 'atk-btn w-full text-left rounded border-l-4 border-gray-600 bg-gray-950 opacity-50 px-3 py-2 flex justify-between items-center border border-gray-700'
+                          ? 'atk-btn w-full text-left rounded border-l-4 border-red-900 bg-gray-950 opacity-60 px-3 py-2 flex justify-between items-center border border-gray-700'
                           : 'atk-btn w-full text-left rounded border-l-4 ' + typeColor + ' bg-gray-950 hover:bg-gray-700 px-3 py-2 flex justify-between items-center border border-gray-600';
-                      return '<div class="flex gap-1 items-center">'
-                          + '<button class="' + btnClass + ' flex-1"'
+                      const tapHint = recharging ? ' (tap to count down)' : '';
+                      return '<button class="' + btnClass + '"'
                           + ' data-eid="' + e.id + '" data-cid="' + c.id + '" data-idx="' + idx + '">'
                           + '<span class="font-semibold text-sm">' + typeEmoji + ' ' + atk.name + rechargeBadge + '</span>'
-                          + '<span class="text-xs text-gray-400 font-mono">' + dice + ' · avg <span class="text-white font-bold">' + avgRoll + '</span> ' + atk.damageType + '</span>'
-                          + '</button>'
-                          + rechargeBtn
-                          + '</div>';
+                          + '<span class="text-xs text-gray-400 font-mono">' + dice + ' · avg <span class="' + (recharging ? 'text-gray-500' : 'text-white') + ' font-bold">' + avgRoll + '</span> ' + atk.damageType + '</span>'
+                          + '</button>';
                   }).join('')
                   + '</div></div>'
                 : (c.type === 'npc' ? '<div class="text-gray-600 text-xs mb-2">No attacks defined</div>' : '');
