@@ -252,7 +252,16 @@
                         <option value="1">1 Round</option><option value="2">2 Rounds</option><option value="3">3 Rounds</option>
                     </select>
                     <select id="ail-dmg" class="bg-gray-900 border border-gray-700 p-2 rounded flex-1">
-                        <option value="none">No Damage</option><option value="1d4">1d4</option><option value="1d6">1d6</option>
+                        <option value="none">No Damage</option>
+                        <option value="1d4">1d4</option>
+                        <option value="1d6">1d6</option>
+                        <option value="1d8">1d8</option>
+                        <option value="1d10">1d10</option>
+                        <option value="1d12">1d12</option>
+                        <option value="2d4">2d4</option>
+                        <option value="2d6">2d6</option>
+                        <option value="2d8">2d8</option>
+                        <option value="2d10">2d10</option>
                     </select>
                 </div>
                 <button onclick="addAilment()" class="w-full bg-red-700 py-2 rounded font-bold">Add Ailment</button>
@@ -788,16 +797,24 @@
 
         function renderAilmentControl(e, c) {
             if (!c.ailments) c.ailments = [];
+
+            const header = '<div class="text-xs text-gray-400 font-semibold uppercase tracking-wide mt-2 mb-1">Ailments</div>';
+
             const pills = c.ailments.map((entry, idx) => {
                 const ail      = ailmentLibrary.find(a => a.name === entry.name);
-                const dmgLabel = ail ? (ail.damage === 'none' ? 'no dmg' : ail.damage) : '?';
+                const noDmg    = !ail || ail.damage === 'none';
+                const dmgLabel = noDmg ? 'No dmg' : ail.damage;
+                const rdColor  = entry.roundsLeft <= 1 ? 'bg-red-800' : entry.roundsLeft <= 2 ? 'bg-yellow-700' : 'bg-purple-900';
                 return [
-                    '<div class="flex gap-1 w-full">',
+                    '<div class="flex gap-1 w-full items-stretch">',
                     '<button onclick="rollAilmentDamage(', e.id, ',', c.id, ',', idx, ')"',
-                    ' class="bg-purple-900 p-1 rounded text-xs flex-1 text-left truncate">',
-                    '&#x1FA78; ', entry.name, ' (', dmgLabel, ', ', entry.roundsLeft, 'rds)</button>',
+                    ' class="', rdColor, ' hover:opacity-80 rounded px-3 py-2 flex-1 text-left flex justify-between items-center">',
+                    '<span class="text-sm font-semibold">&#x1FA78; ', entry.name, '</span>',
+                    '<span class="text-xs text-gray-300 font-mono ml-2">', dmgLabel,
+                    ' &nbsp;<span class="bg-black bg-opacity-30 px-1 rounded">', entry.roundsLeft, ' rd', entry.roundsLeft === 1 ? '' : 's', '</span></span>',
+                    '</button>',
                     '<button onclick="removeAilment(', e.id, ',', c.id, ',', idx, ')"',
-                    ' class="bg-gray-600 px-2 rounded text-xs">&#x2715;</button>',
+                    ' class="bg-gray-700 hover:bg-gray-600 px-3 rounded text-gray-400 text-sm" title="Remove ailment">&#x2715;</button>',
                     '</div>'
                 ].join('');
             }).join('');
@@ -809,11 +826,11 @@
             const dropdown = [
                 '<select id="ail-sel-', e.id, '-', c.id, '"',
                 ' onchange="assignAilment(', e.id, ',', c.id, ',this.value);this.selectedIndex=0;"',
-                ' class="bg-gray-900 p-1 rounded text-xs w-full mt-1">',
+                ' class="bg-gray-900 border border-gray-700 p-2 rounded text-xs w-full mt-1">',
                 '<option value="">+ Assign Ailment</option>', opts, '</select>'
             ].join('');
 
-            return '<div class="space-y-1">' + pills + dropdown + '</div>';
+            return '<div>' + (c.ailments.length > 0 ? header : '') + '<div class="space-y-1">' + pills + '</div>' + dropdown + '</div>';
         }
 
         // ── Attack rolling ───────────────────────────────────────────────
@@ -1029,24 +1046,40 @@
                     : '<input type="number" placeholder="Init" onchange="updateInit(' + e.id + ',' + c.id + ',this.value)" class="w-14 bg-gray-900 p-1 text-center rounded font-mono border border-gray-600 text-sm">';
 
             // HP controls
-            const hpHtml = c.type === 'npc'
-                ? '<div class="flex gap-1 items-center ' + (isDead ? 'opacity-40' : '') + '">'
-                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',-1)" class="bg-red-900 px-3 py-2 rounded font-bold text-base">-1</button>'
-                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',-5)" class="bg-red-900 px-3 py-2 rounded font-bold text-base">-5</button>'
-                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',-10)" class="bg-red-950 px-3 py-2 rounded font-bold text-base">-10</button>'
-                  + '<span class="font-mono font-bold text-sm pl-1">' + c.hp + '/' + c.maxHp + '</span></div>'
+            const hpBar    = c.maxHp > 0 ? Math.round((c.hp / c.maxHp) * 100) : 0;
+            const hpColor  = hpBar > 60 ? 'bg-green-600' : hpBar > 25 ? 'bg-yellow-500' : 'bg-red-600';
+            const hpHtml   = c.type === 'npc'
+                ? '<div class="' + (isDead ? 'opacity-40' : '') + ' mt-2 mb-1">'
+                  + '<div class="flex justify-between items-center mb-1">'
+                  + '<span class="text-xs text-gray-400 font-semibold uppercase tracking-wide">Hit Points</span>'
+                  + '<span class="font-mono font-bold text-sm">' + c.hp + ' / ' + c.maxHp + ' HP</span>'
+                  + '</div>'
+                  + '<div class="w-full bg-gray-900 rounded-full h-2 mb-2"><div class="' + hpColor + ' h-2 rounded-full transition-all" style="width:' + hpBar + '%"></div></div>'
+                  + '<div class="grid grid-cols-3 gap-1">'
+                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',-1)" class="bg-red-900 hover:bg-red-700 py-2 rounded font-bold text-sm text-center">-1</button>'
+                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',-5)" class="bg-red-900 hover:bg-red-700 py-2 rounded font-bold text-sm text-center">-5</button>'
+                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',-10)" class="bg-red-950 hover:bg-red-800 py-2 rounded font-bold text-sm text-center">-10</button>'
+                  + '</div>'
+                  + '</div>'
                 : '';
 
             // Attacks (NPC only)
             const attacksHtml = c.type === 'npc' && c.attacks && c.attacks.length > 0
-                ? '<div class="space-y-1 mb-2">'
+                ? '<div class="mb-2">'
+                  + '<div class="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1">Attacks</div>'
+                  + '<div class="space-y-1">'
                   + c.attacks.map((atk, idx) => {
-                      const dice = atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '');
+                      const dice      = atk.count + 'd' + atk.die + (atk.bonus ? (atk.bonus > 0 ? '+' + atk.bonus : atk.bonus) : '');
+                      const avgRoll   = Math.round(atk.count * ((atk.die + 1) / 2) + (atk.bonus || 0));
                       const typeEmoji = {slashing:'⚔',piercing:'🗡',bludgeoning:'🔨',fire:'🔥',cold:'❄',lightning:'⚡',poison:'☠',acid:'🧪',necrotic:'💀',radiant:'✨',psychic:'🧠',force:'💥',thunder:'🌩'}[atk.damageType] || '⚔';
-                      return '<button onclick="rollAttack(' + e.id + ',' + c.id + ',' + idx + ')" class="bg-blue-900 p-3 rounded text-sm w-full text-left font-semibold">'
-                          + typeEmoji + ' ' + atk.name + ' (' + dice + ' ' + atk.damageType + ')</button>';
+                      const typeColor = {slashing:'border-orange-700',piercing:'border-yellow-700',bludgeoning:'border-stone-600',fire:'border-red-700',cold:'border-blue-400',lightning:'border-yellow-400',poison:'border-green-700',acid:'border-lime-600',necrotic:'border-purple-800',radiant:'border-yellow-300',psychic:'border-pink-600',force:'border-indigo-500',thunder:'border-sky-600'}[atk.damageType] || 'border-gray-600';
+                      return '<button class="atk-btn w-full text-left rounded border-l-4 ' + typeColor + ' bg-gray-800 hover:bg-gray-700 px-3 py-2 flex justify-between items-center"'
+                          + ' data-eid="' + e.id + '" data-cid="' + c.id + '" data-idx="' + idx + '">'
+                          + '<span class="font-semibold text-sm">' + typeEmoji + ' ' + atk.name + '</span>'
+                          + '<span class="text-xs text-gray-400 font-mono">' + dice + ' <span class="text-gray-500">·</span> avg <span class="text-white font-bold">' + avgRoll + '</span> ' + atk.damageType + '</span>'
+                          + '</button>';
                   }).join('')
-                  + '</div>'
+                  + '</div></div>'
                 : (c.type === 'npc' ? '<div class="text-gray-600 text-xs mb-2">No attacks defined</div>' : '');
 
             // NPC stat line
@@ -1054,13 +1087,13 @@
                 ? '<div class="text-xs text-gray-400 mb-2">AC ' + c.ac + ' · Perc ' + c.perception + (c.resistance !== 'None' ? ' · Res: ' + c.resistance : '') + (c.cr ? ' · CR ' + c.cr : '') + '</div>'
                 : '';
 
-            return '<div class="bg-gray-700 p-2 rounded text-sm relative">'
+            return '<div class="bg-gray-700 p-3 rounded text-sm relative">'
                 + deadOverlay
                 + '<div class="flex justify-between items-center mb-1">'
                 + '<div class="flex items-center gap-2">' + initHtml + '<span class="font-bold">' + c.name + (c.isBoss ? ' 👑' : '') + '</span></div>'
-                + hpHtml
                 + '</div>'
                 + statLine
+                + hpHtml
                 + attacksHtml
                 + renderAilmentControl(e, c)
                 + '</div>';
@@ -1092,6 +1125,17 @@
         if (ailmentLibrary.length === 0) { ailmentLibrary = DEFAULT_AILMENTS.map(a => ({...a})); save(); }
 
         // ── Boot ─────────────────────────────────────────────────────────
+
+        // Delegated listener for attack buttons — avoids inline onclick with large IDs
+        document.getElementById('encounter-list').addEventListener('click', function(evt) {
+            const btn = evt.target.closest('.atk-btn');
+            if (!btn) return;
+            const eId  = parseInt(btn.dataset.eid);
+            const cId  = parseInt(btn.dataset.cid);
+            const idx  = parseInt(btn.dataset.idx);
+            rollAttack(eId, cId, idx);
+        });
+
         renderPlayers();
         renderAilmentLibrary();
         renderEncounters();
