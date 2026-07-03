@@ -26,6 +26,19 @@
         html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
         /* Smooth tap highlight removal */
         * { -webkit-tap-highlight-color: transparent; }
+
+        /* Roll overlay */
+        @keyframes rollCardIn {
+            0%   { opacity:0; transform:scale(0.85); }
+            60%  { transform:scale(1.03); }
+            100% { opacity:1; transform:scale(1); }
+        }
+        @keyframes rollNumIn {
+            0%   { opacity:0; transform:translateY(12px); }
+            100% { opacity:1; transform:translateY(0); }
+        }
+        .roll-card-in { animation: rollCardIn 0.22s cubic-bezier(0.22,1,0.36,1) forwards; }
+        .roll-num-in  { animation: rollNumIn  0.18s ease forwards; }
         button, select { touch-action: manipulation; }
     </style>
 </head>
@@ -92,7 +105,21 @@
         </div>
     </div>
 
-    <div id="roll-toast" class="fixed top-1/2 left-4 right-4 -translate-y-1/2 bg-yellow-600 text-white p-4 rounded shadow-lg hidden z-50 font-bold text-sm text-center" style="transform: translateY(-50%)"></div>
+    <!-- Roll result overlay -->
+    <div id="roll-overlay" class="fixed inset-0 z-50 flex items-center justify-center hidden" onclick="hideRollOverlay()">
+        <div class="absolute inset-0 bg-black bg-opacity-60"></div>
+        <div id="roll-card" class="relative flex flex-col items-center gap-1 px-10 py-8 rounded-3xl text-center"
+             style="background:linear-gradient(145deg,#1a1a2e,#16213e);border:1px solid rgba(234,179,8,0.3);box-shadow:0 0 60px rgba(0,0,0,0.8),0 0 30px rgba(234,179,8,0.15);min-width:260px"
+             onclick="event.stopPropagation()">
+            <button onclick="hideRollOverlay()" class="absolute top-3 right-4 text-gray-600 hover:text-gray-300 text-base leading-none">✕</button>
+            <div id="roll-label" class="text-xs font-semibold tracking-widest uppercase text-gray-500 mb-1"></div>
+            <div id="roll-name" class="text-yellow-400 font-bold text-base leading-tight"></div>
+            <div id="roll-total" class="font-black leading-none" style="font-size:5rem;color:#fff;text-shadow:0 0 40px rgba(234,179,8,0.6)"></div>
+            <div id="roll-formula" class="text-gray-500 text-xs tracking-wide mt-1"></div>
+            <div id="roll-type" class="text-xs font-semibold mt-2 px-3 py-1 rounded-full" style="background:rgba(255,255,255,0.07);color:#94a3b8"></div>
+        </div>
+    </div>
+
 
     <!-- ── Top bar ── -->
     <header class="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center sticky top-0 z-40"
@@ -181,7 +208,8 @@
                 <input id="lib-search" oninput="npcLibPage=0;renderLibNPCs()" placeholder="🔍 Search NPCs..." class="p-2 bg-gray-900 rounded border border-gray-700 w-full text-sm">
             </div>
             <!-- Custom NPC form -->
-            <div id="lib-pager" class="flex items-center justify-between gap-2 mb-4"></div>\n            <details class="bg-gray-800 rounded border border-gray-700 mb-4">
+            <div id="lib-pager" class="flex items-center justify-between gap-2 mb-4"></div>
+            <details class="bg-gray-800 rounded border border-gray-700 mb-4">
                 <summary class="p-3 font-bold text-yellow-500 cursor-pointer text-sm">+ Add Custom NPC</summary>
                 <div class="p-3 space-y-2 border-t border-gray-700">
                     <input id="lib-name" placeholder="NPC Name" class="p-2 bg-gray-900 rounded border border-gray-700 w-full text-sm">
@@ -328,7 +356,6 @@
         let expandedEncounters = new Set();
         let editingEncounterName = new Set();
         let editingInit    = new Set();
-        let toastTimeout   = null;
         let customAttacksDraft = [];   // attacks being built for a new custom NPC
 
         // ── Persistence ──────────────────────────────────────────────────
@@ -607,12 +634,93 @@
         function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 
         // ── Toast ────────────────────────────────────────────────────────
+
+        function hideRollOverlay() {
+            resetDiceState();
+            document.getElementById('roll-overlay').classList.add('hidden');
+            document.getElementById('roll-backdrop').classList.add('hidden');
+        }
+
+        // showDiceRoll: animate a die then show result
+        // name = attack/ailment name, total = final number, sub = dice formula string, dieType = sides (4/6/8/10/12/20)
+        // ── Roll overlay ─────────────────────────────────────────────────
+        let rollOverlayTimeout = null;
+
+        function hideRollOverlay() {
+            document.getElementById('roll-overlay').classList.add('hidden');
+            if (rollOverlayTimeout) clearTimeout(rollOverlayTimeout);
+        }
+
+        function resetDiceState() {
+            hideRollOverlay();
+        }
+
+        const TYPE_EMOJI = {
+            slashing:'⚔', piercing:'🗡', bludgeoning:'🔨', fire:'🔥', cold:'❄',
+            lightning:'⚡', poison:'☠', acid:'🧪', necrotic:'💀', radiant:'✨',
+            psychic:'🧠', force:'💥', thunder:'🌩'
+        };
+
+        function showDiceRoll(name, total, formula, dmgType) {
+            const overlay  = document.getElementById('roll-overlay');
+            const card     = document.getElementById('roll-card');
+            const labelEl  = document.getElementById('roll-label');
+            const nameEl   = document.getElementById('roll-name');
+            const totalEl  = document.getElementById('roll-total');
+            const formulaEl= document.getElementById('roll-formula');
+            const typeEl   = document.getElementById('roll-type');
+
+            const emoji = TYPE_EMOJI[dmgType] || '🎲';
+
+            labelEl.textContent   = 'Damage Roll';
+            nameEl.textContent    = name;
+            totalEl.textContent   = total;
+            formulaEl.textContent = formula;
+            typeEl.textContent    = emoji + ' ' + (dmgType || '');
+
+            // Colour the total glow by damage type
+            const glows = { fire:'rgba(239,68,68,0.7)', cold:'rgba(96,165,250,0.7)',
+                            lightning:'rgba(250,204,21,0.7)', poison:'rgba(34,197,94,0.7)',
+                            necrotic:'rgba(168,85,247,0.7)', radiant:'rgba(251,191,36,0.7)',
+                            acid:'rgba(132,204,22,0.7)', psychic:'rgba(236,72,153,0.7)' };
+            const glow = glows[dmgType] || 'rgba(234,179,8,0.6)';
+            totalEl.style.textShadow = '0 0 40px ' + glow;
+
+            // Animate in
+            overlay.classList.remove('hidden');
+            card.classList.remove('roll-card-in');
+            totalEl.classList.remove('roll-num-in');
+            void card.offsetWidth;
+            card.classList.add('roll-card-in');
+            totalEl.classList.add('roll-num-in');
+
+            if (rollOverlayTimeout) clearTimeout(rollOverlayTimeout);
+            rollOverlayTimeout = setTimeout(hideRollOverlay, 4000);
+        }
+
         function showToast(msg) {
-            const t = document.getElementById('roll-toast');
-            if (toastTimeout) clearTimeout(toastTimeout);
-            t.innerText = msg;
-            t.classList.remove('hidden');
-            toastTimeout = setTimeout(() => t.classList.add('hidden'), 5000);
+            const overlay  = document.getElementById('roll-overlay');
+            const card     = document.getElementById('roll-card');
+            const labelEl  = document.getElementById('roll-label');
+            const nameEl   = document.getElementById('roll-name');
+            const totalEl  = document.getElementById('roll-total');
+            const formulaEl= document.getElementById('roll-formula');
+            const typeEl   = document.getElementById('roll-type');
+
+            labelEl.textContent   = '';
+            nameEl.textContent    = '';
+            totalEl.textContent   = '';
+            typeEl.textContent    = '';
+            formulaEl.textContent = msg;
+            totalEl.style.textShadow = '';
+
+            overlay.classList.remove('hidden');
+            card.classList.remove('roll-card-in');
+            void card.offsetWidth;
+            card.classList.add('roll-card-in');
+
+            if (rollOverlayTimeout) clearTimeout(rollOverlayTimeout);
+            rollOverlayTimeout = setTimeout(hideRollOverlay, 3000);
         }
 
         // ── Players ──────────────────────────────────────────────────────
@@ -801,8 +909,14 @@
 
             save(); renderEncounters();
 
-            const dmgText = noDmg ? 'no damage' : total + ' dmg (' + ail.damage + ')';
-            showToast('🩸 ' + entry.name + ' on ' + c.name + ': ' + dmgText + (expired ? ' — expired!' : ' — ' + newRounds + ' rd' + (newRounds === 1 ? '' : 's') + ' left'));
+            const expiredSuffix = expired ? ' (expired)' : ' · ' + newRounds + 'rd' + (newRounds === 1 ? '' : 's') + ' left';
+            if (noDmg) {
+                showToast('🩸 ' + entry.name + ' on ' + c.name + ': no damage' + expiredSuffix);
+            } else {
+                const ailParts = ail.damage.split('d');
+                const ailDie   = parseInt(ailParts[1]) || 6;
+                showDiceRoll('🩸 ' + entry.name + ' · ' + c.name, total, ail.damage + expiredSuffix, ailDie);
+            }
         }
 
         function renderAilmentControl(e, c) {
@@ -876,7 +990,7 @@
             for (let i = 0; i < atk.count; i++) total += Math.floor(Math.random() * atk.die) + 1;
             total += atk.bonus || 0;
 
-            showToast('⚔ ' + atk.name + ': ' + total + ' ' + atk.damageType + ' dmg (' + atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '') + ')');
+            showDiceRoll(atk.name, total, atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '') + ' ' + atk.damageType, atk.die);
         }
 
         // ── Encounters ───────────────────────────────────────────────────
@@ -1177,6 +1291,8 @@
             const eId  = parseInt(btn.dataset.eid);
             const cId  = parseInt(btn.dataset.cid);
             const idx  = parseInt(btn.dataset.idx);
+            // Always reset any in-flight animation before starting a new roll
+            resetDiceState();
             rollAttack(eId, cId, idx);
         });
 
