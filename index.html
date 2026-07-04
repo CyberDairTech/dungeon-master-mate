@@ -973,6 +973,17 @@
             // Ensure rechargeState exists and is preserved across save/reload
             if (!c.rechargeState || typeof c.rechargeState !== 'object') c.rechargeState = {};
 
+            // If rechargeOn is missing (stale data), try to recover it from npcLibrary
+            if (atk.rechargeOn == null) {
+                const srcNpc = npcLibrary.find(n => n.name === c.name);
+                if (srcNpc && srcNpc.attacks) {
+                    const srcAtk = srcNpc.attacks.find(a => a.name === atk.name);
+                    if (srcAtk && srcAtk.rechargeOn != null) {
+                        atk.rechargeOn = srcAtk.rechargeOn;
+                    }
+                }
+            }
+
             // Block if this attack is still recharging
             if (atk.rechargeOn != null) {
                 const rl = c.rechargeState[atkIdx];
@@ -1314,6 +1325,31 @@
             resetDiceState();
             rollAttack(eId, cId, idx);
         });
+
+        // ── Migration: patch rechargeOn on existing encounter attacks ──────
+        // Fixes encounters saved before the en-dash regex fix was applied.
+        (function migrateRecharge() {
+            const rechargeRe = /\(Recharge (\d+)[\-\u2013](\d+)|\(Recharge (\d+)\)/i;
+            let changed = false;
+            encounters.forEach(enc => {
+                enc.combatants.forEach(c => {
+                    if (!c.attacks) return;
+                    c.attacks.forEach(atk => {
+                        // If rechargeOn is null/undefined, try to find the name in npcLibrary
+                        if (atk.rechargeOn != null) return;
+                        // Look up original attack name in library to get recharge data
+                        const srcNpc = npcLibrary.find(n => n.name === c.name);
+                        if (!srcNpc || !srcNpc.attacks) return;
+                        const srcAtk = srcNpc.attacks.find(a => a.name === atk.name);
+                        if (srcAtk && srcAtk.rechargeOn != null) {
+                            atk.rechargeOn = srcAtk.rechargeOn;
+                            changed = true;
+                        }
+                    });
+                });
+            });
+            if (changed) save();
+        })();
 
         renderPlayers();
         renderAilmentLibrary();
