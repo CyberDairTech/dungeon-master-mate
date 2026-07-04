@@ -394,7 +394,7 @@
         // Fetches all SRD monsters from Open5e and stores in localStorage.
         // Each NPC entry gets an `attacks` array: [{name, damageDice, bonus, damageType}]
         async function loadBestiary(force) {
-            const CACHE_KEY = 'dmm_bestiary_v4';
+            const CACHE_KEY = 'dmm_bestiary_v5';
             const STATUS_EL = document.getElementById('bestiary-status');
 
             // Migration: wipe any pre-bestiary NPC data (old hand-typed entries with no attacks)
@@ -484,9 +484,11 @@
                 // Detect recharge: "Fire Breath (Recharge 5-6)" -> rechargeOn: 5, cleanName: "Fire Breath"
                 let cleanName = a.name || 'Attack';
                 let rechargeOn = null;
-                const rechargeMatch = cleanName.match(/\(Recharge (\d+)(?:-(\d+))?\)/i);
+                const rechargeMatch = cleanName.match(/\(Recharge (\d+)[\-\u2013](\d+)|\(Recharge (\d+)\)/i);
                 if (rechargeMatch) {
-                    rechargeOn = parseInt(rechargeMatch[1]); // the lowest value needed to recharge
+                    const lo = parseInt(rechargeMatch[1] || rechargeMatch[3]);
+                    const hi = parseInt(rechargeMatch[2] || rechargeMatch[3]);
+                    rechargeOn = Math.max(1, hi - lo + 1);
                     cleanName = cleanName.replace(/\s*\(Recharge[^)]*\)/i, '').trim();
                 }
 
