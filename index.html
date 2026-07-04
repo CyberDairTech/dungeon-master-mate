@@ -984,15 +984,19 @@
                 }
             }
 
+            console.log('[DMM] rollAttack:', atk.name, '| rechargeOn:', atk.rechargeOn, '| rechargeState:', JSON.stringify(c.rechargeState), '| atkIdx:', atkIdx);
+
             // Block if this attack is still recharging
             if (atk.rechargeOn != null) {
                 const rl = c.rechargeState[atkIdx];
+                console.log('[DMM] rl value:', rl, 'type:', typeof rl, 'blocked:', typeof rl === 'number' && rl > 0);
                 if (typeof rl === 'number' && rl > 0) {
                     showToast('⏳ ' + atk.name + ' is recharging — ' + rl + ' round' + (rl === 1 ? '' : 's') + ' remaining');
                     return;
                 }
                 // Mark as used — store rounds as a plain number for reliable JSON round-trip
                 c.rechargeState[atkIdx] = atk.rechargeOn;
+                console.log('[DMM] Set rechargeState[' + atkIdx + '] =', atk.rechargeOn);
             }
 
             // Decrement all OTHER recharge countdowns on this combatant
