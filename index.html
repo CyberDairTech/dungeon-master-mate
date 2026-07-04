@@ -967,30 +967,33 @@
 
             if (!c.rechargeState) c.rechargeState = {};
 
-            // If recharging, tick down the counter instead of attacking
+            // Block if this attack is still recharging
             if (atk.rechargeOn != null) {
                 const state = c.rechargeState[atkIdx];
                 if (state && state.roundsLeft > 0) {
-                    const newCount = state.roundsLeft - 1;
-                    c.rechargeState[atkIdx] = { roundsLeft: newCount };
-                    save(); renderEncounters();
-                    if (newCount === 0) {
-                        showToast('✅ ' + atk.name + ' has recharged and is ready!');
-                    } else {
-                        showToast('⏳ ' + atk.name + ' recharging — ' + newCount + ' round' + (newCount === 1 ? '' : 's') + ' left');
-                    }
+                    showToast('⏳ ' + atk.name + ' is recharging — ' + state.roundsLeft + ' round' + (state.roundsLeft === 1 ? '' : 's') + ' remaining');
                     return;
                 }
-                // Attack used — start countdown from rechargeOn value
+                // Mark as used — start countdown
                 c.rechargeState[atkIdx] = { roundsLeft: atk.rechargeOn };
-                save(); renderEncounters();
             }
+
+            // Decrement all OTHER recharge countdowns on this combatant
+            c.attacks.forEach((a, i) => {
+                if (i === atkIdx || a.rechargeOn == null) return;
+                const rs = c.rechargeState[i];
+                if (rs && rs.roundsLeft > 0) {
+                    const next = rs.roundsLeft - 1;
+                    c.rechargeState[i] = { roundsLeft: next };
+                }
+            });
 
             let total = 0;
             for (let i = 0; i < atk.count; i++) total += Math.floor(Math.random() * atk.die) + 1;
             total += atk.bonus || 0;
 
-            showDiceRoll(atk.name, total, atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '') + ' ' + atk.damageType, atk.die);
+            save(); renderEncounters();
+            showDiceRoll(atk.name, total, atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '') + ' ' + atk.damageType, atk.damageType);
         }
 
         // ── Encounters ───────────────────────────────────────────────────
@@ -1223,18 +1226,30 @@
                       const rState       = hasRecharge && c.rechargeState && c.rechargeState[idx];
                       const roundsLeft   = rState ? rState.roundsLeft : 0;
                       const recharging   = hasRecharge && roundsLeft > 0;
+
+                      // Recharge badge — counts down, colour shifts red→yellow→green
                       const rechargeBadge = hasRecharge
-                          ? '<span class="text-xs font-bold px-1 py-0 rounded ml-1 ' + (recharging ? (roundsLeft === 1 ? 'bg-yellow-700 text-yellow-100' : 'bg-red-900 text-red-200') : 'bg-green-900 text-green-300') + '">'
-                            + (recharging ? '⏳ ' + roundsLeft + ' rd' + (roundsLeft === 1 ? '' : 's') : '✅ Ready') + '</span>'
+                          ? '<span style="font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;margin-left:5px;'
+                            + (recharging
+                                ? (roundsLeft === 1
+                                    ? 'background:rgba(234,179,8,0.2);color:#fde047;border:1px solid rgba(234,179,8,0.4)'
+                                    : 'background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.3)')
+                                : 'background:rgba(34,197,94,0.15);color:#86efac;border:1px solid rgba(34,197,94,0.3)')
+                            + '">'
+                            + (recharging ? '⏳ ' + roundsLeft + ' rd' + (roundsLeft === 1 ? '' : 's') : '✅ Ready')
+                            + '</span>'
                           : '';
+
                       const btnClass = recharging
-                          ? 'atk-btn w-full text-left rounded border-l-4 border-red-900 bg-gray-950 opacity-60 px-3 py-2 flex justify-between items-center border border-gray-700'
+                          ? 'atk-btn w-full text-left rounded border-l-4 border-gray-700 bg-gray-950 px-3 py-2 flex justify-between items-center border border-gray-800'
                           : 'atk-btn w-full text-left rounded border-l-4 ' + typeColor + ' bg-gray-950 hover:bg-gray-700 px-3 py-2 flex justify-between items-center border border-gray-600';
-                      const tapHint = recharging ? ' (tap to count down)' : '';
-                      return '<button class="' + btnClass + '"'
+
+                      return '<button class="' + btnClass + '" style="' + (recharging ? 'opacity:0.5;cursor:not-allowed' : '') + '"'
                           + ' data-eid="' + e.id + '" data-cid="' + c.id + '" data-idx="' + idx + '">'
                           + '<span class="font-semibold text-sm">' + typeEmoji + ' ' + atk.name + rechargeBadge + '</span>'
-                          + '<span class="text-xs text-gray-400 font-mono">' + dice + ' · avg <span class="' + (recharging ? 'text-gray-500' : 'text-white') + ' font-bold">' + avgRoll + '</span> ' + atk.damageType + '</span>'
+                          + '<span class="text-xs font-mono" style="color:' + (recharging ? '#4b5563' : '#9ca3af') + '">'
+                          + dice + ' · avg <span style="color:' + (recharging ? '#4b5563' : '#fff') + ';font-weight:700">' + avgRoll + '</span> ' + atk.damageType
+                          + '</span>'
                           + '</button>';
                   }).join('')
                   + '</div></div>'
