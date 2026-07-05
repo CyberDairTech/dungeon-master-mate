@@ -961,22 +961,18 @@
             const atk = c.attacks && c.attacks[atkIdx];
             if (!atk) return;
 
-            if (!c.rechargeState) c.rechargeState = {};
+            if (!c.rechargeCounters) c.rechargeCounters = {};
 
-            // Block if manually set to recharging
-            const rl = c.rechargeState[atkIdx];
-            if (typeof rl === 'number' && rl > 0) {
-                showToast('⏳ ' + atk.name + ' recharging — ' + rl + ' round' + (rl === 1 ? '' : 's') + ' left');
-                return;
-            }
-
-            // Decrement ALL other active recharge countdowns
-            Object.keys(c.rechargeState).forEach(i => {
-                const v = c.rechargeState[i];
-                if (parseInt(i) !== atkIdx && typeof v === 'number' && v > 0) {
-                    c.rechargeState[i] = v - 1;
+            // Block if this attack is recharging (counter below max)
+            if (atk.rechargeOn != null && atk.rechargeOn > 0) {
+                const cur = c.rechargeCounters[atkIdx];
+                if (cur != null && cur < atk.rechargeOn) {
+                    showToast('\u23F3 ' + atk.name + ' recharging (' + cur + '/' + atk.rechargeOn + ')');
+                    return;
                 }
-            });
+                // Mark as used — counter goes to 0
+                c.rechargeCounters[atkIdx] = 0;
+            }
 
             let total = 0;
             for (let i = 0; i < atk.count; i++) total += Math.floor(Math.random() * atk.die) + 1;
@@ -986,16 +982,20 @@
             showDiceRoll(atk.name, total, atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '') + ' ' + atk.damageType, atk.damageType);
         }
 
-        function setRecharge(eId, cId, atkIdx, rounds) {
+        function tickRecharge(eId, cId, atkIdx, delta) {
             const eIdx = encounters.findIndex(en => en.id === eId);
             if (eIdx === -1) return;
             const cIdx = encounters[eIdx].combatants.findIndex(co => co.id === cId);
             if (cIdx === -1) return;
-            const c = encounters[eIdx].combatants[cIdx];
-            if (!c.rechargeState) c.rechargeState = {};
-            c.rechargeState[atkIdx] = Math.max(0, parseInt(rounds) || 0);
+            const c   = encounters[eIdx].combatants[cIdx];
+            const atk = c.attacks && c.attacks[atkIdx];
+            if (!atk || atk.rechargeOn == null) return;
+            if (!c.rechargeCounters) c.rechargeCounters = {};
+            const cur = c.rechargeCounters[atkIdx] != null ? c.rechargeCounters[atkIdx] : atk.rechargeOn;
+            c.rechargeCounters[atkIdx] = Math.min(atk.rechargeOn, Math.max(0, cur + delta));
             save(); renderEncounters();
         }
+
 
 
         // ── Encounters ───────────────────────────────────────────────────
@@ -1050,7 +1050,7 @@
                         init: Math.floor(Math.random() * 20) + 1,
                         type: 'npc', isBoss: src.isBoss,
                         attacks: src.attacks || [],
-                        rechargeState: {},
+                        rechargeCounters: {},
                         ailments: [],
                         resistance: src.resistance,
                         cr: src.cr || level,
@@ -1220,37 +1220,43 @@
                   + '<div class="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1">Attacks</div>'
                   + '<div class="space-y-1">'
                   + c.attacks.map((atk, idx) => {
-                      const rl          = c.rechargeState ? (c.rechargeState[idx] || 0) : 0;
-                      const recharging   = typeof rl === 'number' && rl > 0;
-                      const typeEmoji    = {slashing:'⚔',piercing:'🗡',bludgeoning:'🔨',fire:'🔥',cold:'❄',lightning:'⚡',poison:'☠',acid:'🧪',necrotic:'💀',radiant:'✨',psychic:'🧠',force:'💥',thunder:'🌩'}[atk.damageType] || '⚔';
-                      const typeColor    = {slashing:'border-orange-700',piercing:'border-yellow-700',bludgeoning:'border-stone-600',fire:'border-red-700',cold:'border-blue-400',lightning:'border-yellow-400',poison:'border-green-700',acid:'border-lime-600',necrotic:'border-purple-800',radiant:'border-yellow-300',psychic:'border-pink-600',force:'border-indigo-500',thunder:'border-sky-600'}[atk.damageType] || 'border-gray-600';
-                      const avgRoll      = Math.round(atk.count * ((atk.die + 1) / 2) + (atk.bonus || 0));
-                      const dice         = atk.count + 'd' + atk.die + (atk.bonus ? (atk.bonus > 0 ? '+' + atk.bonus : atk.bonus) : '');
+                      const typeEmoji = {slashing:'⚔',piercing:'🗡',bludgeoning:'🔨',fire:'🔥',cold:'❄',lightning:'⚡',poison:'☠',acid:'🧪',necrotic:'💀',radiant:'✨',psychic:'🧠',force:'💥',thunder:'🌩'}[atk.damageType] || '⚔';
+                      const typeColor = {slashing:'border-orange-700',piercing:'border-yellow-700',bludgeoning:'border-stone-600',fire:'border-red-700',cold:'border-blue-400',lightning:'border-yellow-400',poison:'border-green-700',acid:'border-lime-600',necrotic:'border-purple-800',radiant:'border-yellow-300',psychic:'border-pink-600',force:'border-indigo-500',thunder:'border-sky-600'}[atk.damageType] || 'border-gray-600';
+                      const avgRoll   = Math.round(atk.count * ((atk.die + 1) / 2) + (atk.bonus || 0));
+                      const dice      = atk.count + 'd' + atk.die + (atk.bonus ? (atk.bonus > 0 ? '+' + atk.bonus : atk.bonus) : '');
 
-                      // Recharge badge
-                      const badge = recharging
-                          ? '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:6px;background:rgba(239,68,68,0.18);color:#fca5a5;border:1px solid rgba(239,68,68,0.35)">⏳ ' + rl + ' rd' + (rl === 1 ? '' : 's') + '</span>'
-                          : '';
+                      // Recharge counter — stored as plain integer on combatant
+                      if (!c.rechargeCounters) c.rechargeCounters = {};
+                      const hasRecharge = atk.rechargeOn != null && atk.rechargeOn > 0;
+                      const counter     = hasRecharge ? (c.rechargeCounters[idx] != null ? c.rechargeCounters[idx] : atk.rechargeOn) : null;
+                      const recharging  = hasRecharge && counter !== null && counter < atk.rechargeOn;
 
-                      // Attack button
-                      const atkBtn = '<button class="atk-btn flex-1 text-left rounded border-l-4 ' + typeColor + ' bg-gray-950 px-3 py-2 flex justify-between items-center border border-gray-600'
-                          + (recharging ? ' opacity-40" style="cursor:not-allowed"' : ' hover:bg-gray-700"')
+                      // Recharge badge shown only when counter < max
+                      const badge = (hasRecharge && recharging)
+                          ? '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:6px;background:rgba(239,68,68,0.18);color:#fca5a5;border:1px solid rgba(239,68,68,0.35)">⏳ ' + counter + '/' + atk.rechargeOn + '</span>'
+                          : (hasRecharge ? '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:6px;background:rgba(34,197,94,0.12);color:#86efac;border:1px solid rgba(34,197,94,0.3)">✅ Ready</span>' : '');
+
+                      // Attack button — locked when counter < max
+                      const locked  = hasRecharge && recharging;
+                      const atkBtn  = '<button class="atk-btn flex-1 text-left rounded border-l-4 ' + typeColor + ' bg-gray-950 px-3 py-2 flex justify-between items-center border border-gray-600' + (locked ? ' opacity-40' : ' hover:bg-gray-700') + '"'
+                          + (locked ? ' style="cursor:not-allowed"' : '')
                           + ' data-eid="' + e.id + '" data-cid="' + c.id + '" data-idx="' + idx + '">'
                           + '<span class="font-semibold text-sm">' + typeEmoji + ' ' + atk.name + badge + '</span>'
-                          + '<span class="text-xs font-mono" style="color:#9ca3af">' + dice + ' · avg <strong style="color:' + (recharging ? '#4b5563' : '#fff') + '">' + avgRoll + '</strong> ' + atk.damageType + '</span>'
+                          + '<span class="text-xs font-mono" style="color:#9ca3af">' + dice + ' · avg <strong style="color:' + (locked ? '#4b5563' : '#fff') + '">' + avgRoll + '</strong> ' + atk.damageType + '</span>'
                           + '</button>';
 
-                      // Recharge controls — either a countdown clear button or a set-rounds row
-                      const rechargeCtrl = recharging
-                          ? '<button onclick="setRecharge(' + e.id + ',' + c.id + ',' + idx + ',0)" title="Clear recharge" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;padding:4px 8px;border-radius:6px;font-size:11px;white-space:nowrap">&#x2715; Clear</button>'
-                          : ['<select onchange="if(this.value){setRecharge(' + e.id + ',' + c.id + ',' + idx + ',this.value);this.selectedIndex=0}" style="background:#111;border:1px solid #374151;color:#9ca3af;padding:4px 6px;border-radius:6px;font-size:11px">',
-                             '<option value="">&#x1F501;</option>',
-                             '<option value="1">1 rd</option><option value="2">2 rds</option><option value="3">3 rds</option>',
-                             '<option value="4">4 rds</option><option value="5">5 rds</option>',
-                             '</select>'].join('');
+                      // Recharge controls — only shown when hasRecharge
+                      const rechargeCtrl = hasRecharge
+                          ? '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;min-width:44px">'
+                            + '<button onclick="tickRecharge(' + e.id + ',' + c.id + ',' + idx + ',1)" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#86efac;width:40px;height:22px;border-radius:5px;font-size:13px;line-height:1" title="Increment (+1)">+</button>'
+                            + '<span style="font-size:10px;color:#6b7280;font-weight:700">' + (counter != null ? counter : atk.rechargeOn) + '/' + atk.rechargeOn + '</span>'
+                            + '<button onclick="tickRecharge(' + e.id + ',' + c.id + ',' + idx + ',-1)" style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;width:40px;height:22px;border-radius:5px;font-size:13px;line-height:1" title="Decrement (-1)">−</button>'
+                            + '</div>'
+                          : '';
 
                       return '<div class="flex gap-1 items-center mb-1">' + atkBtn + rechargeCtrl + '</div>';
                   }).join('')
+
                   + '</div></div>'
                 : (c.type === 'npc' ? '<div class="text-gray-600 text-xs mb-2">No attacks defined</div>' : '');
 
