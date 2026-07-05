@@ -963,15 +963,11 @@
 
             if (!c.rechargeCounters) c.rechargeCounters = {};
 
-            // Block if this attack is recharging (counter below max)
-            if (atk.rechargeOn != null && atk.rechargeOn > 0) {
-                const cur = c.rechargeCounters[atkIdx];
-                if (cur != null && cur < atk.rechargeOn) {
-                    showToast('\u23F3 ' + atk.name + ' recharging (' + cur + '/' + atk.rechargeOn + ')');
-                    return;
-                }
-                // Mark as used — counter goes to 0
-                c.rechargeCounters[atkIdx] = 0;
+            // Block if a cooldown is active on this attack
+            const curCD = c.rechargeCounters[atkIdx];
+            if (typeof curCD === 'number' && curCD > 0) {
+                showToast('\u23F3 ' + atk.name + ' on cooldown — ' + curCD + ' rd' + (curCD === 1 ? '' : 's') + ' remaining');
+                return;
             }
 
             let total = 0;
@@ -982,17 +978,22 @@
             showDiceRoll(atk.name, total, atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '') + ' ' + atk.damageType, atk.damageType);
         }
 
-        function tickRecharge(eId, cId, atkIdx, delta) {
+        function tickRecharge(eId, cId, atkIdx, value) {
             const eIdx = encounters.findIndex(en => en.id === eId);
             if (eIdx === -1) return;
             const cIdx = encounters[eIdx].combatants.findIndex(co => co.id === cId);
             if (cIdx === -1) return;
-            const c   = encounters[eIdx].combatants[cIdx];
-            const atk = c.attacks && c.attacks[atkIdx];
-            if (!atk || atk.rechargeOn == null) return;
+            const c = encounters[eIdx].combatants[cIdx];
             if (!c.rechargeCounters) c.rechargeCounters = {};
-            const cur = c.rechargeCounters[atkIdx] != null ? c.rechargeCounters[atkIdx] : atk.rechargeOn;
-            c.rechargeCounters[atkIdx] = Math.min(atk.rechargeOn, Math.max(0, cur + delta));
+            const cur = c.rechargeCounters[atkIdx];
+            if (typeof cur === 'number' && cur > 0) {
+                // Active cooldown — decrement by 1 (value is -1 from button)
+                const next = cur + value;
+                c.rechargeCounters[atkIdx] = next <= 0 ? undefined : next;
+            } else {
+                // Idle — set to chosen rounds (value is the picked number)
+                c.rechargeCounters[atkIdx] = Math.max(1, parseInt(value) || 1);
+            }
             save(); renderEncounters();
         }
 
@@ -1225,36 +1226,22 @@
                       const avgRoll   = Math.round(atk.count * ((atk.die + 1) / 2) + (atk.bonus || 0));
                       const dice      = atk.count + 'd' + atk.die + (atk.bonus ? (atk.bonus > 0 ? '+' + atk.bonus : atk.bonus) : '');
 
-                      // Recharge counter — stored as plain integer on combatant
+                      // Recharge counter
                       if (!c.rechargeCounters) c.rechargeCounters = {};
-                      const hasRecharge = atk.rechargeOn != null && atk.rechargeOn > 0;
-                      const counter     = hasRecharge ? (c.rechargeCounters[idx] != null ? c.rechargeCounters[idx] : atk.rechargeOn) : null;
-                      const recharging  = hasRecharge && counter !== null && counter < atk.rechargeOn;
+                      const curCount   = c.rechargeCounters[idx];          // undefined = not set
+                      const recharging = typeof curCount === 'number' && curCount > 0;
+                      const locked     = recharging;
 
-                      // Recharge badge shown only when counter < max
-                      const badge = (hasRecharge && recharging)
-                          ? '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:6px;background:rgba(239,68,68,0.18);color:#fca5a5;border:1px solid rgba(239,68,68,0.35)">⏳ ' + counter + '/' + atk.rechargeOn + '</span>'
-                          : (hasRecharge ? '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:6px;background:rgba(34,197,94,0.12);color:#86efac;border:1px solid rgba(34,197,94,0.3)">✅ Ready</span>' : '');
-
-                      // Attack button — locked when counter < max
-                      const locked  = hasRecharge && recharging;
-                      const atkBtn  = '<button class="atk-btn flex-1 text-left rounded border-l-4 ' + typeColor + ' bg-gray-950 px-3 py-2 flex justify-between items-center border border-gray-600' + (locked ? ' opacity-40' : ' hover:bg-gray-700') + '"'
+                      // Attack button — clean, no badge
+                      const atkBtn = '<button class="atk-btn flex-1 text-left rounded border-l-4 ' + typeColor + ' bg-gray-950 px-3 py-2 flex justify-between items-center border border-gray-600' + (locked ? ' opacity-40' : ' hover:bg-gray-700') + '"'
                           + (locked ? ' style="cursor:not-allowed"' : '')
-                          + ' data-eid="' + e.id + '" data-cid="' + c.id + '" data-idx="' + idx + '">'
-                          + '<span class="font-semibold text-sm">' + typeEmoji + ' ' + atk.name + badge + '</span>'
-                          + '<span class="text-xs font-mono" style="color:#9ca3af">' + dice + ' · avg <strong style="color:' + (locked ? '#4b5563' : '#fff') + '">' + avgRoll + '</strong> ' + atk.damageType + '</span>'
-                          + '</button>';
-
-                      // Recharge controls — only shown when hasRecharge
-                      const rechargeCtrl = hasRecharge
-                          ? '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;min-width:44px">'
-                            + '<button onclick="tickRecharge(' + e.id + ',' + c.id + ',' + idx + ',1)" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#86efac;width:40px;height:22px;border-radius:5px;font-size:13px;line-height:1" title="Increment (+1)">+</button>'
-                            + '<span style="font-size:10px;color:#6b7280;font-weight:700">' + (counter != null ? counter : atk.rechargeOn) + '/' + atk.rechargeOn + '</span>'
-                            + '<button onclick="tickRecharge(' + e.id + ',' + c.id + ',' + idx + ',-1)" style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;width:40px;height:22px;border-radius:5px;font-size:13px;line-height:1" title="Decrement (-1)">−</button>'
-                            + '</div>'
-                          : '';
-
-                      return '<div class="flex gap-1 items-center mb-1">' + atkBtn + rechargeCtrl + '</div>';
+                          + ' data-eid="' + e.id + '" data-cid="' + c.id + '" data-idx="' + idx + '">'                          + '<span class="font-semibold text-sm">' + typeEmoji + ' ' + atk.name + '</span>'                          + '<span class="text-xs font-mono" style="color:#9ca3af">' + dice + ' · avg <strong style="color:' + (locked ? '#4b5563' : '#fff') + '">' + avgRoll + '</strong> ' + atk.damageType + '</span>'                          + '</button>';
+                      // Standalone recharge pill:
+                      // — When idle: a dropdown to pick cooldown rounds (1-5)
+                      // — When active: shows remaining rounds + tapping decrements
+                      const rechargePill = recharging
+                          ? '<button onclick="tickRecharge(' + e.id + ',' + c.id + ',' + idx + ',-1)"'                            + ' style="min-width:54px;padding:6px 10px;border-radius:8px;font-size:11px;font-weight:700;'                            + 'background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;'                            + 'display:flex;align-items:center;gap:4px;white-space:nowrap;cursor:pointer"'                            + ' title="Tap to count down">'                            + '\u23F3 ' + curCount + ' rd' + (curCount === 1 ? '' : 's') + '</button>'                          : '<select onchange="if(this.value){tickRecharge(' + e.id + ',' + c.id + ',' + idx + ',parseInt(this.value));this.selectedIndex=0;}"'                            + ' style="min-width:54px;padding:5px 6px;border-radius:8px;font-size:11px;'                            + 'background:#111;border:1px solid #374151;color:#6b7280;cursor:pointer"'                            + ' title="Set cooldown rounds">'                            + '<option value="">\u1F501 CD</option>'                            + '<option value="1">1 rd</option><option value="2">2 rds</option>'                            + '<option value="3">3 rds</option><option value="4">4 rds</option>'                            + '<option value="5">5 rds</option>'                            + '</select>';
+                      return '<div class="flex gap-2 items-center mb-1">' + atkBtn + rechargePill + '</div>';
                   }).join('')
 
                   + '</div></div>'
