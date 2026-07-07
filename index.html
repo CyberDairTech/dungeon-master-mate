@@ -45,17 +45,6 @@
 <body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col">
 
     <!-- ── Modals ── -->
-    <div id="npc-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-center justify-center p-4 z-50">
-        <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 w-full max-w-sm">
-            <h3 class="text-lg font-bold mb-4">Enter NPC Level</h3>
-            <input id="modal-level-input" type="number" value="1" class="w-full bg-gray-900 border border-gray-600 p-2 rounded mb-4">
-            <div class="flex justify-end gap-2">
-                <button onclick="closeModal('npc-modal')" class="px-4 py-2 bg-gray-600 rounded">Cancel</button>
-                <button onclick="confirmNPCLevel()" class="px-4 py-2 bg-blue-600 rounded font-bold">Add NPC</button>
-            </div>
-        </div>
-    </div>
-
     <div id="npc-picker-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-start justify-center p-4 z-50 pt-16">
         <div class="bg-gray-800 p-4 rounded-lg border border-gray-700 w-full max-w-sm max-h-[80vh] flex flex-col">
             <div class="flex justify-between items-center mb-3">
@@ -1087,38 +1076,28 @@
             closeModal('delete-encounter-modal');
         }
 
-        function confirmNPCLevel() {
-            const level = parseInt(document.getElementById('modal-level-input').value) || 1;
-            if (pendingNPC) {
-                const e   = encounters.find(en => en.id === pendingNPC.eId);
-                const src = pendingNPC.srcNPC;
-                if (e && src) {
-                    // Use real SRD stats if available, scale otherwise
-                    // SRD monsters: use real stat block values
-                    // Custom monsters: use MM-accurate CR lookup table
-                    const crNum = parseFloat(src.cr) || 0;
-                    const hp  = src.baseHp      || crToBaseHp(crNum);
-                    const ac  = src.ac          || crToAC(crNum);
-                    const per = src.perception  || Math.max(0, Math.floor(crNum / 4));
-                    const xp  = src.xpByCR      || crToXP(crNum);
-                    const finalHp = src.isBoss ? hp * 2 : hp;
-
-                    e.combatants.push({
-                        id: Date.now(), name: src.name, level,
-                        xp: xp, hp: finalHp, maxHp: finalHp,
-                        ac: ac, perception: per,
-                        init: Math.floor(Math.random() * 20) + 1,
-                        type: 'npc', isBoss: src.isBoss,
-                        attacks: src.attacks || [],
-                        rechargeCounters: {},
-                        ailments: [],
-                        resistance: src.resistance,
-                        cr: src.cr || level,
-                    });
-                    save(); renderEncounters();
-                }
-            }
-            closeModal('npc-modal');
+        function addNPCToEncounter(eId, src) {
+            const e = encounters.find(en => en.id === eId);
+            if (!e || !src) return;
+            const crNum   = parseFloat(src.cr) || 0;
+            const hp      = src.baseHp     || crToBaseHp(crNum);
+            const ac      = src.ac         || crToAC(crNum);
+            const per     = src.perception || Math.max(0, Math.floor(crNum / 4));
+            const xp      = src.xpByCR    || crToXP(crNum);
+            const finalHp = src.isBoss ? hp * 2 : hp;
+            e.combatants.push({
+                id: Date.now(), name: src.name,
+                xp, hp: finalHp, maxHp: finalHp,
+                ac, perception: per,
+                init: Math.floor(Math.random() * 20) + 1,
+                type: 'npc', isBoss: src.isBoss,
+                attacks: src.attacks || [],
+                rechargeCounters: {},
+                ailments: [],
+                resistance: src.resistance,
+                cr: src.cr || '?',
+            });
+            save(); renderEncounters();
         }
 
         function addPlayerToEncounter(eId, pName) {
@@ -1195,9 +1174,8 @@
         function pickNpcFromList(npcIdx) {
             const n = npcLibrary[npcIdx];
             if (!n) return;
-            pendingNPC = { eId: npcPickerEncounterId, srcNPC: n };
             closeModal('npc-picker-modal');
-            document.getElementById('npc-modal').classList.remove('hidden');
+            addNPCToEncounter(npcPickerEncounterId, n);
         }
 
         function crToSortableNumber(cr) {
