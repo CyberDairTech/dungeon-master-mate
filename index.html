@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="DMM">
     <meta name="theme-color" content="#1f2937">
-    <title>DMM: The Dungeon Master Mate</title>
+    <title>DMM: Dungeon Master Mate</title>
     <script src="https://cdn.tailwindcss.com"></script>
 
     <!-- Inline SVG icons as data URIs for apple touch icon -->
@@ -1223,27 +1223,29 @@
                   + c.attacks.map((atk, idx) => {
                       const typeEmoji = {slashing:'⚔',piercing:'🗡',bludgeoning:'🔨',fire:'🔥',cold:'❄',lightning:'⚡',poison:'☠',acid:'🧪',necrotic:'💀',radiant:'✨',psychic:'🧠',force:'💥',thunder:'🌩'}[atk.damageType] || '⚔';
                       const typeColor = {slashing:'border-orange-700',piercing:'border-yellow-700',bludgeoning:'border-stone-600',fire:'border-red-700',cold:'border-blue-400',lightning:'border-yellow-400',poison:'border-green-700',acid:'border-lime-600',necrotic:'border-purple-800',radiant:'border-yellow-300',psychic:'border-pink-600',force:'border-indigo-500',thunder:'border-sky-600'}[atk.damageType] || 'border-gray-600';
-                      const avgRoll   = Math.round(atk.count * ((atk.die + 1) / 2) + (atk.bonus || 0));
-                      const dice      = atk.count + 'd' + atk.die + (atk.bonus ? (atk.bonus > 0 ? '+' + atk.bonus : atk.bonus) : '');
+                      const avgRoll = Math.round(atk.count * ((atk.die + 1) / 2) + (atk.bonus || 0));
+                      const dice    = atk.count + 'd' + atk.die + (atk.bonus ? (atk.bonus > 0 ? '+' + atk.bonus : atk.bonus) : '');
 
-                      // Recharge counter
+                      // Cooldown state
                       if (!c.rechargeCounters) c.rechargeCounters = {};
-                      const curCount   = c.rechargeCounters[idx];          // undefined = not set
+                      const curCount  = c.rechargeCounters[idx];
                       const recharging = typeof curCount === 'number' && curCount > 0;
-                      const locked     = recharging;
 
-                      // Attack button — clean, no badge
-                      const atkBtn = '<button class="atk-btn flex-1 text-left rounded border-l-4 ' + typeColor + ' bg-gray-950 px-3 py-2 flex justify-between items-center border border-gray-600' + (locked ? ' opacity-40' : ' hover:bg-gray-700') + '"'
-                          + (locked ? ' style="cursor:not-allowed"' : '')
-                          + ' data-eid="' + e.id + '" data-cid="' + c.id + '" data-idx="' + idx + '">'                          + '<span class="font-semibold text-sm">' + typeEmoji + ' ' + atk.name + '</span>'                          + '<span class="text-xs font-mono" style="color:#9ca3af">' + dice + ' · avg <strong style="color:' + (locked ? '#4b5563' : '#fff') + '">' + avgRoll + '</strong> ' + atk.damageType + '</span>'                          + '</button>';
-                      // Standalone cooldown pill
+                      // Attack button
+                      const atkBtn = '<button class="atk-btn flex-1 text-left rounded border-l-4 ' + typeColor + ' bg-gray-950 px-3 py-2 flex justify-between items-center border border-gray-600' + (recharging ? ' opacity-40' : ' hover:bg-gray-700') + '"'
+                          + (recharging ? ' style="cursor:not-allowed"' : '')
+                          + ' data-eid="' + e.id + '" data-cid="' + c.id + '" data-idx="' + idx + '">'
+                          + '<span class="font-semibold text-sm">' + typeEmoji + ' ' + atk.name + '</span>'
+                          + '<span class="text-xs font-mono" style="color:#9ca3af">' + dice + ' · avg <strong style="color:' + (recharging ? '#4b5563' : '#fff') + '">' + avgRoll + '</strong> ' + atk.damageType + '</span>'
+                          + '</button>';
+
+                      // Cooldown pill
                       const rechargePill = recharging
                           ? ('<button onclick="tickRecharge(' + e.id + ',' + c.id + ',' + idx + ',-1)"'
                             + ' style="min-width:52px;padding:6px 8px;border-radius:8px;font-size:12px;font-weight:700;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;cursor:pointer;text-align:center"'
-                            + '>\u23F3 ' + curCount + ' rd' + (curCount === 1 ? '' : 's') + '</button>')
+                            + '>⏳ ' + curCount + ' rd' + (curCount === 1 ? '' : 's') + '</button>')
                           : ('<select onchange="if(this.value){tickRecharge(' + e.id + ',' + c.id + ',' + idx + ',parseInt(this.value));this.selectedIndex=0;}"'
-                            + ' style="min-width:52px;padding:5px 4px;border-radius:8px;font-size:12px;background:#111827;border:1px solid #374151;color:#9ca3af;cursor:pointer"'
-                            + '>'
+                            + ' style="min-width:52px;padding:5px 4px;border-radius:8px;font-size:12px;background:#111827;border:1px solid #374151;color:#9ca3af;cursor:pointer">'
                             + '<option value="">CD</option>'
                             + '<option value="1">1 rd</option>'
                             + '<option value="2">2 rds</option>'
@@ -1252,7 +1254,8 @@
                             + '<option value="5">5 rds</option>'
                             + '<option value="6">6 rds</option>'
                             + '</select>');
-                  }).join('')
+
+                      return '<div class="flex gap-2 items-center mb-1">' + atkBtn + rechargePill + '</div>';
 
                   + '</div></div>'
                 : (c.type === 'npc' ? '<div class="text-gray-600 text-xs mb-2">No attacks defined</div>' : '');
