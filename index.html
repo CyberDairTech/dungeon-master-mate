@@ -353,6 +353,7 @@
         let players        = JSON.parse(localStorage.getItem('dmm_players'))        || [];
         let encounters     = JSON.parse(localStorage.getItem('dmm_encounters'))     || [];
         let pendingNPC     = null;
+        const healingMode  = new Set(); // tracks which combatants are in healing mode
         let expandedEncounters = new Set();
         let editingEncounterName = new Set();
         let editingInit    = new Set();
@@ -1080,6 +1081,22 @@
             if (c) { c.hp = Math.min(c.maxHp, Math.max(0, c.hp + amount)); save(); renderEncounters(); }
         }
 
+        function toggleHealingMode(cId) {
+            if (healingMode.has(cId)) healingMode.delete(cId);
+            else healingMode.add(cId);
+            renderEncounters();
+        }
+
+        function reviveNPC(eId, cId) {
+            const eIdx = encounters.findIndex(en => en.id === eId);
+            if (eIdx === -1) return;
+            const cIdx = encounters[eIdx].combatants.findIndex(co => co.id === cId);
+            if (cIdx === -1) return;
+            const c = encounters[eIdx].combatants[cIdx];
+            c.hp = Math.max(1, Math.round(c.maxHp * 0.25));
+            save(); renderEncounters();
+        }
+
         function saveEncounterName(eId, inputEl) {
             const e = encounters.find(en => en.id === eId);
             if (e) { e.name = inputEl.value; editingEncounterName.delete(eId); save(); renderEncounters(); }
@@ -1188,7 +1205,8 @@
             const isDead = c.type === 'npc' && c.hp === 0;
             const xpDisplay  = c.xp ? c.xp.toLocaleString() + ' XP' : '0 XP';
             const crDisplay  = c.cr ? ' (CR ' + c.cr + ')' : '';
-            const deadOverlay = isDead ? '<div class="absolute inset-0 bg-red-900/90 flex flex-col items-center justify-center font-black text-2xl tracking-widest z-10 rounded"><div>DEAD</div><div class="text-sm font-normal mt-1">' + xpDisplay + crDisplay + '</div></div>' : '';
+            const deadOverlay = isDead
+                ? '<div class="absolute inset-0 bg-red-900/90 flex flex-col items-center justify-center z-10 rounded gap-2">'                  + '<div class="font-black text-2xl tracking-widest">DEAD</div>'                  + '<div class="text-sm font-normal">' + xpDisplay + crDisplay + '</div>'                  + '<button onclick="reviveNPC(' + e.id + ',' + c.id + ')" style="margin-top:6px;padding:6px 18px;border-radius:8px;font-size:13px;font-weight:700;background:rgba(34,197,94,0.2);border:1px solid rgba(34,197,94,0.5);color:#86efac;cursor:pointer">💚 Revive (25% HP)</button>'                  + '</div>'                : '';
 
             // Initiative display
             const initHtml = c.type === 'npc'
@@ -1198,21 +1216,23 @@
                     : '<input type="number" placeholder="Init" onchange="updateInit(' + e.id + ',' + c.id + ',this.value)" class="w-14 bg-gray-900 p-1 text-center rounded font-mono border border-gray-600 text-sm">';
 
             // HP controls
-            const hpBar    = c.maxHp > 0 ? Math.round((c.hp / c.maxHp) * 100) : 0;
-            const hpColor  = hpBar > 60 ? 'bg-green-600' : hpBar > 25 ? 'bg-yellow-500' : 'bg-red-600';
-            const hpHtml   = c.type === 'npc'
+            const hpBar     = c.maxHp > 0 ? Math.round((c.hp / c.maxHp) * 100) : 0;
+            const hpColor   = hpBar > 60 ? 'bg-green-600' : hpBar > 25 ? 'bg-yellow-500' : 'bg-red-600';
+            const isHealing = healingMode.has(c.id);
+            const hpHtml    = c.type === 'npc'
                 ? '<div class="' + (isDead ? 'opacity-40' : '') + ' mt-2 mb-1">'
                   + '<div class="flex justify-between items-center mb-1">'
                   + '<span class="text-xs text-gray-400 font-semibold uppercase tracking-wide">Hit Points</span>'
+                  + '<div class="flex items-center gap-2">'
                   + '<span class="font-mono font-bold text-sm">' + c.hp + ' / ' + c.maxHp + ' HP</span>'
-                  + '</div>'
+                  + '<button onclick="toggleHealingMode(' + c.id + ')" style="font-size:11px;padding:2px 8px;border-radius:6px;font-weight:700;cursor:pointer;border:1px solid ' + (isHealing ? 'rgba(34,197,94,0.5);background:rgba(34,197,94,0.15);color:#86efac' : 'rgba(239,68,68,0.4);background:rgba(239,68,68,0.1);color:#fca5a5') + '">' + (isHealing ? '💚 Heal' : '🗡 Dmg') + '</button>'
+                  + '</div></div>'
                   + '<div class="w-full bg-gray-900 rounded-full h-2 mb-2"><div class="' + hpColor + ' h-2 rounded-full transition-all" style="width:' + hpBar + '%"></div></div>'
                   + '<div class="grid grid-cols-3 gap-1">'
-                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',-1)" class="bg-red-900 hover:bg-red-700 py-2 rounded font-bold text-sm text-center">-1</button>'
-                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',-5)" class="bg-red-900 hover:bg-red-700 py-2 rounded font-bold text-sm text-center">-5</button>'
-                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',-10)" class="bg-red-950 hover:bg-red-800 py-2 rounded font-bold text-sm text-center">-10</button>'
-                  + '</div>'
-                  + '</div>'
+                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',' + (isHealing ? 1 : -1) + ')" class="' + (isHealing ? 'bg-green-900 hover:bg-green-700' : 'bg-red-900 hover:bg-red-700') + ' py-2 rounded font-bold text-sm">' + (isHealing ? '+1' : '-1') + '</button>'
+                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',' + (isHealing ? 5 : -5) + ')" class="' + (isHealing ? 'bg-green-900 hover:bg-green-700' : 'bg-red-900 hover:bg-red-700') + ' py-2 rounded font-bold text-sm">' + (isHealing ? '+5' : '-5') + '</button>'
+                  + '<button onclick="modifyHp(' + e.id + ',' + c.id + ',' + (isHealing ? 10 : -10) + ')" class="' + (isHealing ? 'bg-green-950 hover:bg-green-800' : 'bg-red-950 hover:bg-red-800') + ' py-2 rounded font-bold text-sm">' + (isHealing ? '+10' : '-10') + '</button>'
+                  + '</div></div>'
                 : '';
 
             // Attacks (NPC only)
