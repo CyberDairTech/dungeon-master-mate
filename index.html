@@ -1325,7 +1325,7 @@
                 + deadOverlay
                 + '<div class="flex justify-between items-center mb-1">'
                 + '<div class="flex items-center gap-2">' + initHtml + '<span class="font-bold">' + c.name + (c.isBoss ? ' 👑' : '') + '</span></div>'
-                + (c.type === 'npc' && !isDead ? '<button onclick="startTurn(' + e.id + ',' + c.id + ')" style="font-size:11px;padding:3px 10px;border-radius:6px;font-weight:700;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;cursor:pointer;white-space:nowrap">▶ Start Turn</button>' : '')
+                + (!isDead ? '<button onclick="startTurn(' + e.id + ',' + c.id + ')" style="font-size:11px;padding:3px 10px;border-radius:6px;font-weight:700;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;cursor:pointer;white-space:nowrap">▶ Start Turn</button>' : '')
                 + '</div>'
                 + statLine
                 + hpHtml
