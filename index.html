@@ -926,12 +926,11 @@
                 const rdColor  = entry.roundsLeft <= 1 ? 'bg-red-800' : entry.roundsLeft <= 2 ? 'bg-yellow-700' : 'bg-purple-900';
                 return [
                     '<div class="flex gap-1 w-full items-stretch">',
-                    '<button onclick="rollAilmentDamage(', e.id, ',', c.id, ',', idx, ')"',
-                    ' class="', rdColor, ' hover:opacity-80 rounded px-3 py-2 flex-1 text-left flex justify-between items-center">',
+                    '<div class="', rdColor, ' rounded px-3 py-2 flex-1 text-left flex justify-between items-center" style="cursor:default">',
                     '<span class="text-sm font-semibold">&#x1FA78; ', entry.name, '</span>',
                     '<span class="text-xs text-gray-300 font-mono ml-2">', dmgLabel,
                     ' &nbsp;<span class="bg-black bg-opacity-30 px-1 rounded">', entry.roundsLeft, ' rd', entry.roundsLeft === 1 ? '' : 's', '</span></span>',
-                    '</button>',
+                    '</div>',
                     '<button onclick="removeAilment(', e.id, ',', c.id, ',', idx, ')"',
                     ' class="bg-gray-700 hover:bg-gray-600 px-3 rounded text-gray-400 text-sm" title="Remove ailment">&#x2715;</button>',
                     '</div>'
@@ -999,6 +998,76 @@
         }
 
 
+
+        function endOfRound(eId) {
+            const eIdx = encounters.findIndex(en => en.id === eId);
+            if (eIdx === -1) return;
+            const enc = encounters[eIdx];
+            const messages = [];
+
+            enc.combatants.forEach(c => {
+                if (c.type !== 'npc') return;
+
+                // ── Ailments ──────────────────────────────────────────
+                if (c.ailments && c.ailments.length > 0) {
+                    // Process in reverse so splicing doesn't shift indices
+                    for (let i = c.ailments.length - 1; i >= 0; i--) {
+                        const entry = c.ailments[i];
+                        const ail   = ailmentLibrary.find(a => a.name === entry.name);
+                        if (!ail) continue;
+
+                        const noDmg = ail.damage === 'none';
+                        let dmg = 0;
+                        if (!noDmg) {
+                            const [cs, ds] = ail.damage.split('d');
+                            for (let j = 0; j < parseInt(cs); j++) dmg += Math.floor(Math.random() * parseInt(ds)) + 1;
+                            c.hp = Math.max(0, c.hp - dmg);
+                        }
+
+                        const newRounds = entry.roundsLeft - 1;
+                        const expired   = newRounds <= 0;
+                        if (expired) {
+                            messages.push('🩸 ' + entry.name + ' on ' + c.name + (noDmg ? '' : ': ' + dmg + ' dmg') + ' — expired');
+                            c.ailments.splice(i, 1);
+                        } else {
+                            entry.roundsLeft = newRounds;
+                            messages.push('🩸 ' + entry.name + ' on ' + c.name + (noDmg ? '' : ': ' + dmg + ' dmg') + ' (' + newRounds + ' rd' + (newRounds === 1 ? '' : 's') + ' left)');
+                        }
+                    }
+                }
+
+                // ── Cooldowns ─────────────────────────────────────────
+                if (c.rechargeCounters) {
+                    Object.keys(c.rechargeCounters).forEach(k => {
+                        const cur = c.rechargeCounters[k];
+                        if (typeof cur === 'number' && cur > 0) {
+                            const next = cur - 1;
+                            c.rechargeCounters[k] = next <= 0 ? undefined : next;
+                            const atkName = c.attacks && c.attacks[k] ? c.attacks[k].name : 'Attack';
+                            if (next <= 0) {
+                                messages.push('✅ ' + atkName + ' (' + c.name + ') recharged!');
+                            } else {
+                                messages.push('⏳ ' + atkName + ' (' + c.name + '): ' + next + ' rd' + (next === 1 ? '' : 's') + ' left');
+                            }
+                        }
+                    });
+                }
+            });
+
+            save();
+            renderEncounters();
+
+            // Scroll to the top of this encounter
+            const el = document.getElementById('enc-' + eId);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            // Show summary toast
+            if (messages.length === 0) {
+                showToast('⚔ End of Round — no active effects');
+            } else {
+                showToast('⚔ End of Round:\n' + messages.join('\n'));
+            }
+        }
 
         // ── Encounters ───────────────────────────────────────────────────
         function createEncounter() {
@@ -1109,7 +1178,7 @@
                 const totalXP  = e.combatants.reduce((s, c) => s + (c.type === 'npc' ? (c.xp || 0) : 0), 0);
                 const isExp    = expandedEncounters.has(e.id);
 
-                return '<div class="bg-gray-800 p-4 rounded border border-gray-700">'
+                return '<div class="bg-gray-800 p-4 rounded border border-gray-700" id="enc-' + e.id + '">'
                 + '<div class="flex items-center gap-2 mb-2">'
                 + '<button onclick="expandedEncounters.has(' + e.id + ')?expandedEncounters.delete(' + e.id + '):expandedEncounters.add(' + e.id + ');renderEncounters();" class="text-yellow-500 font-bold text-lg w-6">' + (isExp ? '▼' : '▶') + '</button>'
                 + (editingEncounterName.has(e.id)
@@ -1197,7 +1266,7 @@
                 + '<select onchange="if(this.value){addPlayerToEncounter(' + e.id + ',this.value);this.value=\'\';}" class="bg-gray-700 p-2 rounded text-xs flex-1">'
                 + '<option value="">+ Player</option>' + playerOpts + '</select>'
                 + '</div>'
-                + '<div class="space-y-2">' + sorted.map(c => renderCombatant(e, c)).join('') + '</div>';
+                + '<div class="space-y-2">' + sorted.map(c => renderCombatant(e, c)).join('') + '</div>'                + '<button onclick="endOfRound(' + e.id + ')" style="margin-top:12px;width:100%;padding:10px;border-radius:10px;font-weight:700;font-size:14px;background:linear-gradient(135deg,rgba(234,179,8,0.2),rgba(234,179,8,0.08));border:1px solid rgba(234,179,8,0.4);color:#fde047;letter-spacing:0.05em;cursor:pointer">⚔ End of Round</button>';
             return html;
         }
 
@@ -1261,9 +1330,8 @@
 
                       // Cooldown pill
                       const rechargePill = recharging
-                          ? ('<button onclick="tickRecharge(' + e.id + ',' + c.id + ',' + idx + ',-1)"'
-                            + ' style="min-width:52px;padding:6px 8px;border-radius:8px;font-size:12px;font-weight:700;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;cursor:pointer;text-align:center"'
-                            + '>⏳ ' + curCount + ' rd' + (curCount === 1 ? '' : 's') + '</button>')
+                          ? ('<span style="min-width:52px;padding:6px 8px;border-radius:8px;font-size:12px;font-weight:700;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;display:inline-block;text-align:center;cursor:default">'
+                            + '⏳ ' + curCount + ' rd' + (curCount === 1 ? '' : 's') + '</span>')
                           : ('<select onchange="if(this.value){tickRecharge(' + e.id + ',' + c.id + ',' + idx + ',parseInt(this.value));this.selectedIndex=0;}"'
                             + ' style="min-width:52px;padding:5px 4px;border-radius:8px;font-size:12px;background:#111827;border:1px solid #374151;color:#9ca3af;cursor:pointer">'
                             + '<option value="">CD</option>'
