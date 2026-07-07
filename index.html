@@ -999,74 +999,63 @@
 
 
 
-        function endOfRound(eId) {
+        function startTurn(eId, cId) {
             const eIdx = encounters.findIndex(en => en.id === eId);
             if (eIdx === -1) return;
-            const enc = encounters[eIdx];
+            const c = encounters[eIdx].combatants.find(co => co.id === cId);
+            if (!c) return;
             const messages = [];
 
-            enc.combatants.forEach(c => {
-                if (c.type !== 'npc') return;
-
-                // ── Ailments ──────────────────────────────────────────
-                if (c.ailments && c.ailments.length > 0) {
-                    // Process in reverse so splicing doesn't shift indices
-                    for (let i = c.ailments.length - 1; i >= 0; i--) {
-                        const entry = c.ailments[i];
-                        const ail   = ailmentLibrary.find(a => a.name === entry.name);
-                        if (!ail) continue;
-
-                        const noDmg = ail.damage === 'none';
-                        let dmg = 0;
-                        if (!noDmg) {
-                            const [cs, ds] = ail.damage.split('d');
-                            for (let j = 0; j < parseInt(cs); j++) dmg += Math.floor(Math.random() * parseInt(ds)) + 1;
-                            c.hp = Math.max(0, c.hp - dmg);
-                        }
-
-                        const newRounds = entry.roundsLeft - 1;
-                        const expired   = newRounds <= 0;
-                        if (expired) {
-                            messages.push('🩸 ' + entry.name + ' on ' + c.name + (noDmg ? '' : ': ' + dmg + ' dmg') + ' — expired');
-                            c.ailments.splice(i, 1);
-                        } else {
-                            entry.roundsLeft = newRounds;
-                            messages.push('🩸 ' + entry.name + ' on ' + c.name + (noDmg ? '' : ': ' + dmg + ' dmg') + ' (' + newRounds + ' rd' + (newRounds === 1 ? '' : 's') + ' left)');
-                        }
+            // ── Ailments ──────────────────────────────────────────────
+            if (c.ailments && c.ailments.length > 0) {
+                for (let i = c.ailments.length - 1; i >= 0; i--) {
+                    const entry = c.ailments[i];
+                    const ail   = ailmentLibrary.find(a => a.name === entry.name);
+                    if (!ail) continue;
+                    const noDmg = ail.damage === 'none';
+                    let dmg = 0;
+                    if (!noDmg) {
+                        const [cs, ds] = ail.damage.split('d');
+                        for (let j = 0; j < parseInt(cs); j++) dmg += Math.floor(Math.random() * parseInt(ds)) + 1;
+                        c.hp = Math.max(0, c.hp - dmg);
+                    }
+                    const newRounds = entry.roundsLeft - 1;
+                    const expired   = newRounds <= 0;
+                    if (expired) {
+                        messages.push('🩸 ' + entry.name + (noDmg ? '' : ': ' + dmg + ' dmg') + ' — expired');
+                        c.ailments.splice(i, 1);
+                    } else {
+                        entry.roundsLeft = newRounds;
+                        messages.push('🩸 ' + entry.name + (noDmg ? '' : ': ' + dmg + ' dmg') + ' · ' + newRounds + ' rd' + (newRounds === 1 ? '' : 's') + ' left');
                     }
                 }
+            }
 
-                // ── Cooldowns ─────────────────────────────────────────
-                if (c.rechargeCounters) {
-                    Object.keys(c.rechargeCounters).forEach(k => {
-                        const cur = c.rechargeCounters[k];
-                        if (typeof cur === 'number' && cur > 0) {
-                            const next = cur - 1;
-                            c.rechargeCounters[k] = next <= 0 ? undefined : next;
-                            const atkName = c.attacks && c.attacks[k] ? c.attacks[k].name : 'Attack';
-                            if (next <= 0) {
-                                messages.push('✅ ' + atkName + ' (' + c.name + ') recharged!');
-                            } else {
-                                messages.push('⏳ ' + atkName + ' (' + c.name + '): ' + next + ' rd' + (next === 1 ? '' : 's') + ' left');
-                            }
-                        }
-                    });
-                }
-            });
+            // ── Cooldowns ─────────────────────────────────────────────
+            if (c.rechargeCounters) {
+                Object.keys(c.rechargeCounters).forEach(k => {
+                    const cur = c.rechargeCounters[k];
+                    if (typeof cur === 'number' && cur > 0) {
+                        const next = cur - 1;
+                        c.rechargeCounters[k] = next <= 0 ? undefined : next;
+                        const atkName = c.attacks && c.attacks[k] ? c.attacks[k].name : 'Attack';
+                        messages.push(next <= 0
+                            ? '✅ ' + atkName + ' recharged!'
+                            : '⏳ ' + atkName + ': ' + next + ' rd' + (next === 1 ? '' : 's') + ' left');
+                    }
+                });
+            }
 
             save();
             renderEncounters();
 
-            // Scroll to the top of this encounter
-            const el = document.getElementById('enc-' + eId);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // Scroll to this combatant's card
+            const el = document.getElementById('comb-' + cId);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
-            // Show summary toast
-            if (messages.length === 0) {
-                showToast('⚔ End of Round — no active effects');
-            } else {
-                showToast('⚔ End of Round:\n' + messages.join('\n'));
-            }
+            showToast(messages.length === 0
+                ? '▶ ' + c.name + '\'s turn — no active effects'
+                : '▶ ' + c.name + '\'s turn:\n' + messages.join('\n'));
         }
 
         // ── Encounters ───────────────────────────────────────────────────
@@ -1266,7 +1255,7 @@
                 + '<select onchange="if(this.value){addPlayerToEncounter(' + e.id + ',this.value);this.value=\'\';}" class="bg-gray-700 p-2 rounded text-xs flex-1">'
                 + '<option value="">+ Player</option>' + playerOpts + '</select>'
                 + '</div>'
-                + '<div class="space-y-2">' + sorted.map(c => renderCombatant(e, c)).join('') + '</div>'                + '<button onclick="endOfRound(' + e.id + ')" style="margin-top:12px;width:100%;padding:10px;border-radius:10px;font-weight:700;font-size:14px;background:linear-gradient(135deg,rgba(234,179,8,0.2),rgba(234,179,8,0.08));border:1px solid rgba(234,179,8,0.4);color:#fde047;letter-spacing:0.05em;cursor:pointer">⚔ End of Round</button>';
+                + '<div class="space-y-2">' + sorted.map(c => renderCombatant(e, c)).join('') + '</div>';
             return html;
         }
 
@@ -1354,10 +1343,11 @@
                 ? '<div class="text-xs text-gray-400 mb-2">AC ' + c.ac + ' · Perc ' + c.perception + (c.resistance !== 'None' ? ' · Res: ' + c.resistance : '') + (c.cr ? ' · CR ' + c.cr : '') + '</div>'
                 : '';
 
-            return '<div class="bg-gray-700 p-3 rounded text-sm relative">'
+            return '<div class="bg-gray-700 p-3 rounded text-sm relative" id="comb-' + c.id + '">'
                 + deadOverlay
                 + '<div class="flex justify-between items-center mb-1">'
                 + '<div class="flex items-center gap-2">' + initHtml + '<span class="font-bold">' + c.name + (c.isBoss ? ' 👑' : '') + '</span></div>'
+                + (c.type === 'npc' && !isDead ? '<button onclick="startTurn(' + e.id + ',' + c.id + ')" style="font-size:11px;padding:3px 10px;border-radius:6px;font-weight:700;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;cursor:pointer;white-space:nowrap">▶ Start Turn</button>' : '')
                 + '</div>'
                 + statLine
                 + hpHtml
