@@ -94,6 +94,23 @@
         </div>
     </div>
 
+    <!-- Attack roll overlay (d20 hit check) -->
+    <div id="atk-roll-overlay" class="fixed inset-0 flex items-center justify-center z-50 hidden">
+        <div class="bg-gray-900 border-2 border-gray-600 rounded-2xl px-6 py-5 text-center shadow-2xl" style="min-width:240px;max-width:88vw">
+            <div id="atk-roll-name" class="text-yellow-400 font-bold text-sm mb-3"></div>
+            <div class="flex items-center justify-center gap-2 mb-1">
+                <span class="text-gray-500 text-sm font-bold">d20</span>
+                <span id="atk-roll-d20" class="text-white font-black text-5xl"></span>
+                <span id="atk-roll-bonus-str" class="text-gray-400 font-bold text-xl"></span>
+            </div>
+            <div id="atk-roll-total" class="text-yellow-300 font-black text-2xl mb-5"></div>
+            <div class="flex gap-3">
+                <button id="atk-hit-btn" onclick="" class="flex-1 py-3 rounded-xl font-bold text-sm" style="background:rgba(34,197,94,0.2);border:1px solid rgba(34,197,94,0.5);color:#86efac">✅ Hit — Roll Damage</button>
+                <button onclick="dismissAtkRoll()" class="flex-1 py-3 rounded-xl font-bold text-sm" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5">❌ Miss</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Roll result overlay -->
     <div id="roll-overlay" class="fixed inset-0 z-50 flex items-center justify-center hidden" onclick="hideRollOverlay()">
         <div class="absolute inset-0 bg-black bg-opacity-60"></div>
@@ -502,7 +519,8 @@
                 // Strip recharge notation from name for clean display
                 let cleanName = (a.name || 'Attack').replace(/\s*\(Recharge[^)]*\)/i, '').trim();
 
-                attacks.push({ name: cleanName, count, die, bonus, damageType: dmgType });
+                const attackBonus = typeof a.attack_bonus === 'number' ? a.attack_bonus : 0;
+                attacks.push({ name: cleanName, count, die, bonus, damageType: dmgType, attackBonus });
             });
 
             // Determine resistance from damage_resistances field
@@ -969,6 +987,39 @@
         }
 
         // ── Attack rolling ───────────────────────────────────────────────
+        function dismissAtkRoll() {
+            document.getElementById('atk-roll-overlay').classList.add('hidden');
+        }
+
+        function showAtkRoll(atkName, attackBonus, onHit) {
+            const d20      = Math.floor(Math.random() * 20) + 1;
+            const total    = d20 + (attackBonus || 0);
+            const isCrit   = d20 === 20;
+            const isFumble = d20 === 1;
+            const bonusStr = attackBonus > 0 ? '+' + attackBonus : attackBonus < 0 ? String(attackBonus) : '';
+            const totalStr = isCrit ? 'CRITICAL HIT!' : isFumble ? 'FUMBLE!' : 'Total: ' + total;
+
+            document.getElementById('atk-roll-name').textContent = atkName;
+            document.getElementById('atk-roll-d20').textContent  = d20;
+            document.getElementById('atk-roll-d20').style.color  = isCrit ? '#fde047' : isFumble ? '#f87171' : '#fff';
+            document.getElementById('atk-roll-bonus-str').textContent = bonusStr;
+            document.getElementById('atk-roll-total').textContent = totalStr;
+            document.getElementById('atk-roll-total').style.color = isCrit ? '#fde047' : isFumble ? '#f87171' : '#fcd34d';
+
+            // Wire Hit button — on crit always hits, on fumble always misses
+            const hitBtn = document.getElementById('atk-hit-btn');
+            if (isFumble) {
+                hitBtn.style.opacity = '0.3';
+                hitBtn.style.pointerEvents = 'none';
+            } else {
+                hitBtn.style.opacity = '1';
+                hitBtn.style.pointerEvents = '';
+                hitBtn.onclick = () => { dismissAtkRoll(); onHit(); };
+            }
+
+            document.getElementById('atk-roll-overlay').classList.remove('hidden');
+        }
+
         function rollAttack(eId, cId, atkIdx) {
             const eIdx = encounters.findIndex(en => en.id === eId);
             if (eIdx === -1) return;
@@ -987,12 +1038,19 @@
                 return;
             }
 
-            let total = 0;
-            for (let i = 0; i < atk.count; i++) total += Math.floor(Math.random() * atk.die) + 1;
-            total += atk.bonus || 0;
-
-            save(); renderEncounters();
-            showDiceRoll(atk.name, total, atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '') + ' ' + atk.damageType, atk.damageType);
+            // d20 attack roll first — damage only fires if the DM confirms a hit
+            const attackBonus = atk.attackBonus || 0;
+            showAtkRoll(atk.name, attackBonus, () => {
+                // On Hit: set cooldown, roll damage, re-render
+                if (atk.rechargeOn != null && atk.rechargeOn > 0) {
+                    c.rechargeCounters[atkIdx] = atk.rechargeOn;
+                }
+                let total = 0;
+                for (let i = 0; i < atk.count; i++) total += Math.floor(Math.random() * atk.die) + 1;
+                total += atk.bonus || 0;
+                save(); renderEncounters();
+                showDiceRoll(atk.name, total, atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '') + ' ' + atk.damageType, atk.damageType);
+            });
         }
 
         function tickRecharge(eId, cId, atkIdx, value) {
