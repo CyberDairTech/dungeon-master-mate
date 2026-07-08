@@ -122,56 +122,84 @@
 
         <!-- HOME -->
         <div id="home" class="page active-page">
-            <h2 class="text-2xl font-bold mb-6">Welcome to DMM</h2>
-            <div class="space-y-4">
+            <h2 class="text-2xl font-bold mb-2">⚔ DMM</h2>
+            <p class="text-gray-400 text-sm mb-6">Dungeon Master Mate — a mobile-first encounter tracker for tabletop RPGs.</p>
+            <div class="space-y-3">
+
                 <section class="bg-gray-800 rounded border border-gray-700 overflow-hidden">
-                    <button onclick="toggleSection('guide-1')" class="w-full p-4 text-left font-bold text-yellow-500 flex justify-between items-center">
-                        How to Get Started <span>▼</span>
+                    <button onclick="toggleSection('guide-setup')" class="w-full p-4 text-left font-bold text-yellow-500 flex justify-between items-center">
+                        ⚙️ Initial Setup <span>▼</span>
                     </button>
-                    <div id="guide-1" class="p-4 pt-0 text-gray-300">
-                        <ul class="space-y-3 list-decimal list-inside text-sm">
-                            <li><strong>Players:</strong> Add names to the Party list in the Players tab.</li>
-                            <li><strong>NPC Library:</strong> SRD monsters load automatically with all their attacks. Add custom NPCs manually.</li>
-                            <li><strong>NPCs:</strong> Save creatures in the NPC Library.</li>
-                            <li><strong>Ailments:</strong> Save status effects in the Ailment Library.</li>
-                            <li><strong>Encounters:</strong> Start new encounters and pull your saved data in.</li>
-                        </ul>
+                    <div id="guide-setup" class="p-4 pt-2 text-gray-300 space-y-2 text-sm">
+                        <p><strong class="text-white">1. Players</strong> — Go to the Players tab and add each player character by name. They will appear in the + Player dropdown inside every encounter.</p>
+                        <p><strong class="text-white">2. NPC Library</strong> — Over 300 SRD monsters are loaded automatically from the Open5e bestiary the first time you open the NPC tab. Each monster comes with its real stat block: HP, AC, Perception, CR, XP, and all of its attacks with damage dice and damage types. Tap 🔄 Refresh at any time to re-fetch the latest data. Custom NPCs can be added manually using the + Add Custom NPC form — pick a CR and the app calculates HP, AC and XP automatically using official Monster Manual averages.</p>
+                        <p><strong class="text-white">3. Ailment Library</strong> — Create reusable status effects with a name, duration in rounds, and damage dice (or No Damage for conditions like Blinded or Stunned). Damage options range from No Damage through 2d10. Default D&amp;D 5e conditions are pre-loaded on first launch.</p>
+                        <p><strong class="text-white">4. Settings</strong> — Export a full backup of your library to a JSON file and import it on any device to restore your data.</p>
                     </div>
                 </section>
+
                 <section class="bg-gray-800 rounded border border-gray-700 overflow-hidden">
-                    <button onclick="toggleSection('guide-2')" class="w-full p-4 text-left font-bold text-yellow-500 flex justify-between items-center">
-                        Combat Encounter Guide <span>▼</span>
+                    <button onclick="toggleSection('guide-encounter')" class="w-full p-4 text-left font-bold text-yellow-500 flex justify-between items-center">
+                        ⚔️ Running an Encounter <span>▼</span>
                     </button>
-                    <div id="guide-2" class="p-4 pt-0 text-gray-300 hidden">
-                        <ul class="space-y-3 list-disc list-inside text-sm">
-                            <li><strong>Initiative:</strong> Tap the init box to enter a number. Combatants auto-sort. Tap ✎ to edit.</li>
-                            <li><strong>NPC Attacks:</strong> Attacks are loaded automatically from the SRD bestiary. Tap any attack button to roll damage.</li>
-                            <li><strong>Assign Ailments:</strong> Use the Ailment dropdown. Tapping rolls damage, subtracts HP, and ticks down rounds.</li>
-                            <li><strong>Health Tracking:</strong> Use -1 and -5 buttons. HP cannot drop below zero.</li>
-                            <li><strong>Defeat:</strong> 0 HP marks the NPC DEAD and tallies XP.</li>
-                        </ul>
+                    <div id="guide-encounter" class="p-4 pt-2 text-gray-300 space-y-2 text-sm hidden">
+                        <p><strong class="text-white">Creating an Encounter</strong> — Tap + New Encounter on the Encounters tab. Name it, then use the + NPC and + Player dropdowns to add combatants. NPCs are added instantly with their real bestiary stats and a randomised d20 initiative roll. Player initiative is entered manually by tapping the Init box; tap ✎ to edit later.</p>
+                        <p><strong class="text-white">Initiative Order</strong> — All combatants sort automatically from highest to lowest initiative. NPC initiative is auto-rolled (d20) when added. Players enter theirs manually.</p>
+                        <p><strong class="text-white">Hit Points</strong> — Each NPC card shows a colour-coded HP bar (green → yellow → red). Use the <strong>-1 / -5 / -10</strong> buttons to apply damage. Toggle the 🗡 Dmg / 💚 Heal button to switch between damage and healing mode — buttons turn green and become +1 / +5 / +10.</p>
+                        <p><strong class="text-white">Attacks</strong> — Each NPC card lists all of its attacks from the bestiary. Each attack button shows the dice formula, damage type emoji, and average damage. Tap an attack to roll damage — an animated overlay shows the result. Attack buttons are colour-coded by damage type (orange for slashing, red for fire, blue for cold, etc.).</p>
+                        <p><strong class="text-white">Cooldown (CD)</strong> — Every attack has a small CD dropdown. After using a powerful attack, select how many rounds it takes to recharge (1–6). The button becomes a red ⏳ indicator showing rounds remaining. Tapping Start Turn (see below) decrements it automatically.</p>
+                        <p><strong class="text-white">Ailments</strong> — Use the + Assign Ailment dropdown on any combatant card to apply a status effect from your library. Active ailments show as read-only pills displaying the ailment name, damage dice, and rounds remaining. Ailment effects and round counters are applied automatically when Start Turn is tapped.</p>
+                        <p><strong class="text-white">▶ Start Turn</strong> — Tap the indigo Start Turn button on a combatant card at the beginning of that combatant's turn. It automatically: rolls and applies ailment damage, ticks down ailment round counters (removing expired ones), and decrements all active cooldowns by 1. A toast summarises everything that happened that turn.</p>
+                        <p><strong class="text-white">Death &amp; Revive</strong> — When an NPC reaches 0 HP a DEAD overlay appears showing XP earned. Tap 💚 Revive (25% HP) on the overlay to bring them back at 25% of their maximum HP.</p>
+                        <p><strong class="text-white">XP Tracking</strong> — The encounter header shows earned XP vs total XP. The counter turns green when all NPCs are defeated.</p>
                     </div>
                 </section>
+
+                <section class="bg-gray-800 rounded border border-gray-700 overflow-hidden">
+                    <button onclick="toggleSection('guide-npc')" class="w-full p-4 text-left font-bold text-yellow-500 flex justify-between items-center">
+                        👹 NPC Library Details <span>▼</span>
+                    </button>
+                    <div id="guide-npc" class="p-4 pt-2 text-gray-300 space-y-2 text-sm hidden">
+                        <p><strong class="text-white">Bestiary</strong> — On your first visit to the NPC tab, the app fetches all SRD monsters from the Open5e API and caches them locally. Subsequent visits load from cache instantly. The status line shows how many monsters are loaded and how many have attacks. Tap 🔄 Refresh to force a re-fetch.</p>
+                        <p><strong class="text-white">Search</strong> — Type in the search box to filter all 300+ monsters by name in real time. Results show the monster's CR and attack count.</p>
+                        <p><strong class="text-white">Custom NPCs</strong> — Use + Add Custom NPC to create homebrew monsters. Set a name, CR, resistance type, and boss status. Add individual attacks with name, dice count, die type, bonus damage, and damage type. The app derives HP, AC, Perception, and XP from the selected CR using official Monster Manual averages.</p>
+                        <p><strong class="text-white">Recharge Attacks</strong> — Monsters with recharge attacks (e.g. Acid Breath Recharge 5–6) are parsed automatically from the bestiary. Use the CD dropdown in the encounter to manage cooldowns manually.</p>
+                    </div>
+                </section>
+
+                <section class="bg-gray-800 rounded border border-gray-700 overflow-hidden">
+                    <button onclick="toggleSection('guide-ailments-detail')" class="w-full p-4 text-left font-bold text-yellow-500 flex justify-between items-center">
+                        🩸 Ailment Library Details <span>▼</span>
+                    </button>
+                    <div id="guide-ailments-detail" class="p-4 pt-2 text-gray-300 space-y-2 text-sm hidden">
+                        <p><strong class="text-white">Creating Ailments</strong> — Each ailment has a name, a duration (1–3 rounds), and a damage option. Damage ranges from No Damage (for conditions like Blinded, Paralyzed, Stunned) through 1d4, 1d6, 1d8, 1d10, 1d12, 2d4, 2d6, 2d8, and 2d10.</p>
+                        <p><strong class="text-white">Applying Ailments</strong> — Use the + Assign Ailment dropdown on any combatant in an encounter. Multiple ailments can be stacked on the same target, each with its own independent round counter.</p>
+                        <p><strong class="text-white">Start Turn Processing</strong> — When ▶ Start Turn is tapped, each active ailment rolls its damage dice, subtracts the result from the NPC's HP, and decrements its round counter. Ailments with No Damage still decrement and expire correctly. Expired ailments are removed automatically.</p>
+                        <p><strong class="text-white">Defaults</strong> — All official D&amp;D 5e conditions (Blinded, Charmed, Frightened, Paralyzed, Stunned, etc.) plus common damaging effects (Poison, Bleeding, Frostbite, etc.) are pre-loaded on first launch.</p>
+                    </div>
+                </section>
+
                 <section class="bg-gray-800 rounded border border-gray-700 overflow-hidden">
                     <button onclick="toggleSection('guide-install')" class="w-full p-4 text-left font-bold text-yellow-500 flex justify-between items-center">
                         📲 Install as App <span>▼</span>
                     </button>
-                    <div id="guide-install" class="p-4 pt-0 text-gray-300 hidden">
-                        <p class="text-sm mb-3">DMM is a PWA — install it on your home screen for an app-like experience with offline support.</p>
-                        <p class="text-sm font-bold text-yellow-400 mb-1">iPhone / iPad (Safari):</p>
-                        <ol class="list-decimal list-inside text-sm space-y-1 mb-3">
+                    <div id="guide-install" class="p-4 pt-2 text-gray-300 text-sm hidden">
+                        <p class="mb-3">DMM is a PWA — install it on your home screen for a native app experience with full offline support after the first load.</p>
+                        <p class="font-bold text-yellow-400 mb-1">iPhone / iPad (Safari):</p>
+                        <ol class="list-decimal list-inside space-y-1 mb-3">
                             <li>Tap the <strong>Share</strong> button (box with arrow) in Safari</li>
                             <li>Scroll down and tap <strong>Add to Home Screen</strong></li>
                             <li>Tap <strong>Add</strong></li>
                         </ol>
-                        <p class="text-sm font-bold text-yellow-400 mb-1">Android (Chrome):</p>
-                        <ol class="list-decimal list-inside text-sm space-y-1">
+                        <p class="font-bold text-yellow-400 mb-1">Android (Chrome):</p>
+                        <ol class="list-decimal list-inside space-y-1">
                             <li>Tap the <strong>⋮ menu</strong> in Chrome</li>
                             <li>Tap <strong>Add to Home screen</strong></li>
                             <li>Tap <strong>Add</strong></li>
                         </ol>
                     </div>
                 </section>
+
             </div>
         </div>
 
@@ -1325,7 +1353,7 @@
                 + deadOverlay
                 + '<div class="flex justify-between items-center mb-1">'
                 + '<div class="flex items-center gap-2">' + initHtml + '<span class="font-bold">' + c.name + (c.isBoss ? ' 👑' : '') + '</span></div>'
-                + (!isDead ? '<button onclick="startTurn(' + e.id + ',' + c.id + ')" style="font-size:11px;padding:3px 10px;border-radius:6px;font-weight:700;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;cursor:pointer;white-space:nowrap">▶ Start Turn</button>' : '')
+                + (c.type === 'npc' && !isDead ? '<button onclick="startTurn(' + e.id + ',' + c.id + ')" style="font-size:11px;padding:3px 10px;border-radius:6px;font-weight:700;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;cursor:pointer;white-space:nowrap">▶ Start Turn</button>' : '')
                 + '</div>'
                 + statLine
                 + hpHtml
