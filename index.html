@@ -95,21 +95,34 @@
     </div>
 
     <!-- Attack roll overlay (d20 hit check) -->
-    <div id="atk-roll-overlay" class="fixed inset-0 flex items-center justify-center z-50 hidden">
-        <div class="bg-gray-900 border-2 border-gray-600 rounded-2xl px-6 py-5 text-center shadow-2xl" style="min-width:240px;max-width:88vw">
-            <div id="atk-roll-name" class="text-yellow-400 font-bold text-sm mb-3"></div>
+    <div id="atk-roll-overlay" class="fixed inset-0 flex items-center justify-center z-50 hidden" style="background:rgba(0,0,0,0.75)">
+        <div class="bg-gray-900 border-2 border-gray-600 rounded-2xl px-6 py-5 text-center shadow-2xl" style="min-width:260px;max-width:88vw">
+            <div id="atk-roll-name" class="text-yellow-400 font-bold text-sm mb-4"></div>
+            <!-- Breakdown row: d20 roll + modifier = total -->
             <div class="flex items-center justify-center gap-2 mb-1">
-                <span class="text-gray-500 text-sm font-bold">d20</span>
-                <span id="atk-roll-d20" class="text-white font-black text-5xl"></span>
-                <span id="atk-roll-bonus-str" class="text-gray-400 font-bold text-xl"></span>
+                <div class="text-center">
+                    <div class="text-gray-500 text-xs font-bold uppercase tracking-wide mb-1">d20</div>
+                    <span id="atk-roll-d20" class="font-black text-5xl"></span>
+                </div>
+                <span id="atk-roll-plus" class="text-gray-500 font-black text-3xl pb-1"></span>
+                <div id="atk-roll-mod-col" class="text-center hidden">
+                    <div class="text-gray-500 text-xs font-bold uppercase tracking-wide mb-1">Mod</div>
+                    <span id="atk-roll-bonus-str" class="text-gray-300 font-black text-5xl"></span>
+                </div>
             </div>
-            <div id="atk-roll-total" class="text-yellow-300 font-black text-2xl mb-5"></div>
+            <!-- Divider -->
+            <div class="border-t border-gray-700 my-3"></div>
+            <!-- Total vs AC -->
+            <div class="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Total vs Player AC</div>
+            <div id="atk-roll-total" class="font-black text-5xl mb-1"></div>
+            <div id="atk-roll-label" class="text-sm font-bold mb-5"></div>
             <div class="flex gap-3">
                 <button id="atk-hit-btn" onclick="" class="flex-1 py-3 rounded-xl font-bold text-sm" style="background:rgba(34,197,94,0.2);border:1px solid rgba(34,197,94,0.5);color:#86efac">✅ Hit — Roll Damage</button>
                 <button onclick="dismissAtkRoll()" class="flex-1 py-3 rounded-xl font-bold text-sm" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5">❌ Miss</button>
             </div>
         </div>
     </div>
+
 
     <!-- Roll result overlay -->
     <div id="roll-overlay" class="fixed inset-0 z-50 flex items-center justify-center hidden" onclick="hideRollOverlay()">
@@ -387,7 +400,9 @@
         let players        = JSON.parse(localStorage.getItem('dmm_players'))        || [];
         let encounters     = JSON.parse(localStorage.getItem('dmm_encounters'))     || [];
         let pendingNPC     = null;
-        const healingMode  = new Set(); // tracks which combatants are in healing mode
+        const healingMode     = new Set(); // tracks which combatants are in healing mode
+        const attackingNow    = new Set(); // combatant confirmed a hit, picking attack
+        const turnAttackCount = {};         // { cId: n } attacks used this turn, resets on Start Turn
         let expandedEncounters = new Set();
         let editingEncounterName = new Set();
         let editingInit    = new Set();
@@ -429,7 +444,7 @@
         // Fetches all SRD monsters from Open5e and stores in localStorage.
         // Each NPC entry gets an `attacks` array: [{name, damageDice, bonus, damageType}]
         async function loadBestiary(force) {
-            const CACHE_KEY = 'dmm_bestiary_v6';
+            const CACHE_KEY = 'dmm_bestiary_v7';
             const STATUS_EL = document.getElementById('bestiary-status');
 
             // Migration: wipe any pre-bestiary NPC data (old hand-typed entries with no attacks)
@@ -991,25 +1006,43 @@
             document.getElementById('atk-roll-overlay').classList.add('hidden');
         }
 
-        function showAtkRoll(atkName, attackBonus, onHit) {
+        function showAtkRoll(atkName, totalBonus, onHit) {
             const d20      = Math.floor(Math.random() * 20) + 1;
-            const total    = d20 + (attackBonus || 0);
+            const bonus    = totalBonus || 0;
+            const total    = d20 + bonus;
             const isCrit   = d20 === 20;
             const isFumble = d20 === 1;
-            const bonusStr = attackBonus > 0 ? '+' + attackBonus : attackBonus < 0 ? String(attackBonus) : '';
-            const totalStr = isCrit ? 'CRITICAL HIT!' : isFumble ? 'FUMBLE!' : 'Total: ' + total;
 
             document.getElementById('atk-roll-name').textContent = atkName;
-            document.getElementById('atk-roll-d20').textContent  = d20;
-            document.getElementById('atk-roll-d20').style.color  = isCrit ? '#fde047' : isFumble ? '#f87171' : '#fff';
-            document.getElementById('atk-roll-bonus-str').textContent = bonusStr;
-            document.getElementById('atk-roll-total').textContent = totalStr;
-            document.getElementById('atk-roll-total').style.color = isCrit ? '#fde047' : isFumble ? '#f87171' : '#fcd34d';
 
-            // Wire Hit button — on crit always hits, on fumble always misses
+            const d20El = document.getElementById('atk-roll-d20');
+            d20El.textContent = d20;
+            d20El.style.color = isCrit ? '#fde047' : isFumble ? '#f87171' : '#ffffff';
+
+            const modCol = document.getElementById('atk-roll-mod-col');
+            const plusEl = document.getElementById('atk-roll-plus');
+            if (bonus !== 0) {
+                modCol.classList.remove('hidden');
+                plusEl.textContent = bonus > 0 ? '+' : '−';
+                document.getElementById('atk-roll-bonus-str').textContent = Math.abs(bonus);
+            } else {
+                modCol.classList.add('hidden');
+                plusEl.textContent = '';
+            }
+
+            const totalEl = document.getElementById('atk-roll-total');
+            totalEl.textContent = isCrit ? '20★' : isFumble ? '1' : total;
+            totalEl.style.color = isCrit ? '#fde047' : isFumble ? '#f87171' : '#ffffff';
+
+            const labelEl = document.getElementById('atk-roll-label');
+            labelEl.textContent = isCrit ? 'Critical Hit — always hits!'
+                : isFumble ? 'Fumble — always misses!'
+                : 'Total vs player AC';
+            labelEl.style.color = isCrit ? '#fde047' : isFumble ? '#f87171' : '#6b7280';
+
             const hitBtn = document.getElementById('atk-hit-btn');
             if (isFumble) {
-                hitBtn.style.opacity = '0.3';
+                hitBtn.style.opacity = '0.25';
                 hitBtn.style.pointerEvents = 'none';
             } else {
                 hitBtn.style.opacity = '1';
@@ -1020,6 +1053,34 @@
             document.getElementById('atk-roll-overlay').classList.remove('hidden');
         }
 
+        function rollToHit(eId, cId) {
+            const eIdx = encounters.findIndex(en => en.id === eId);
+            if (eIdx === -1) return;
+            const cIdx = encounters[eIdx].combatants.findIndex(co => co.id === cId);
+            if (cIdx === -1) return;
+            const c = encounters[eIdx].combatants[cIdx];
+            if (!c.rechargeCounters) c.rechargeCounters = {};
+
+            // Multi-attack penalty based on how many attacks used this turn
+            const atkNum  = (turnAttackCount[cId] || 0) + 1;
+            const penalty = atkNum >= 3 ? -10 : atkNum === 2 ? -5 : 0;
+
+            // Best available attack bonus from non-CD-locked attacks
+            const available = (c.attacks || []).filter((a, i) => {
+                const cd = c.rechargeCounters[i];
+                return !(typeof cd === 'number' && cd > 0);
+            });
+            const baseBonus  = available.length > 0 ? Math.max(...available.map(a => a.attackBonus || 0)) : 0;
+            const totalBonus = baseBonus + penalty;
+
+            const label = c.name + ' — Attack ' + atkNum + (penalty !== 0 ? ' (' + penalty + ' penalty)' : '');
+
+            showAtkRoll(label, totalBonus, () => {
+                attackingNow.add(cId);
+                renderEncounters();
+            });
+        }
+
         function rollAttack(eId, cId, atkIdx) {
             const eIdx = encounters.findIndex(en => en.id === eId);
             if (eIdx === -1) return;
@@ -1028,32 +1089,36 @@
             const c   = encounters[eIdx].combatants[cIdx];
             const atk = c.attacks && c.attacks[atkIdx];
             if (!atk) return;
-
             if (!c.rechargeCounters) c.rechargeCounters = {};
 
-            // Block if a cooldown is active on this attack
+            // Block if on cooldown
             const curCD = c.rechargeCounters[atkIdx];
             if (typeof curCD === 'number' && curCD > 0) {
-                showToast('\u23F3 ' + atk.name + ' on cooldown — ' + curCD + ' rd' + (curCD === 1 ? '' : 's') + ' remaining');
+                showToast('⏳ ' + atk.name + ' on cooldown — ' + curCD + ' rd' + (curCD === 1 ? '' : 's') + ' remaining');
                 return;
             }
 
-            // d20 attack roll first — damage only fires if the DM confirms a hit
-            const attackBonus = atk.attackBonus || 0;
-            showAtkRoll(atk.name, attackBonus, () => {
-                // On Hit: set cooldown, roll damage, re-render
-                if (atk.rechargeOn != null && atk.rechargeOn > 0) {
-                    c.rechargeCounters[atkIdx] = atk.rechargeOn;
-                }
-                let total = 0;
-                for (let i = 0; i < atk.count; i++) total += Math.floor(Math.random() * atk.die) + 1;
-                total += atk.bonus || 0;
-                save(); renderEncounters();
-                showDiceRoll(atk.name, total, atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '') + ' ' + atk.damageType, atk.damageType);
-            });
-        }
+            // Set cooldown if attack has recharge
+            if (atk.rechargeOn != null && atk.rechargeOn > 0) {
+                c.rechargeCounters[atkIdx] = atk.rechargeOn;
+            }
 
+            // Increment this turn's attack counter
+            turnAttackCount[cId] = (turnAttackCount[cId] || 0) + 1;
+
+            // Roll damage
+            let total = 0;
+            for (let i = 0; i < atk.count; i++) total += Math.floor(Math.random() * atk.die) + 1;
+            total += atk.bonus || 0;
+
+            // Revert to roll-to-hit state
+            attackingNow.delete(cId);
+
+            save(); renderEncounters();
+            showDiceRoll(atk.name, total, atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '') + ' ' + atk.damageType, atk.damageType);
+        }
         function tickRecharge(eId, cId, atkIdx, value) {
+
             const eIdx = encounters.findIndex(en => en.id === eId);
             if (eIdx === -1) return;
             const cIdx = encounters[eIdx].combatants.findIndex(co => co.id === cId);
@@ -1079,7 +1144,13 @@
             if (eIdx === -1) return;
             const c = encounters[eIdx].combatants.find(co => co.id === cId);
             if (!c) return;
+            // Reset attack state and turn counter for this combatant
+            attackingNow.delete(cId);
+            turnAttackCount[cId] = 0;
             const messages = [];
+            // Reset turn attack counter and hide attack list
+            c.turnAttackCount = 0;
+            attackingNow.delete(cId);
 
             // ── Ailments ──────────────────────────────────────────────
             if (c.ailments && c.ailments.length > 0) {
@@ -1120,6 +1191,14 @@
                     }
                 });
             }
+
+            // Reset per-turn attack tracking
+            turnAttacks[cId] = 0;
+            pendingHit.delete(cId);
+
+            // Reset turn state for this combatant
+            attackingNow.delete(cId);
+            delete turnAttackCount[cId];
 
             save();
             renderEncounters();
@@ -1182,6 +1261,7 @@
                 ailments: [],
                 resistance: src.resistance,
                 cr: src.cr || '?',
+                turnAttackCount: 0,
             });
             save(); renderEncounters();
         }
@@ -1358,48 +1438,40 @@
                 : '';
 
             // Attacks (NPC only)
+            // Turn state
+            const atkNum      = turnAttackCount[c.id] || 0;
+            const isAttacking = attackingNow.has(c.id);
+            const penalty     = atkNum >= 2 ? -10 : atkNum === 1 ? -5 : 0;
+            const penaltyNote = penalty < 0 ? ' (' + penalty + ')' : '';
+            const rollBtnLabel = '🎲 Roll to Hit — Attack ' + (atkNum + 1) + penaltyNote;
+
             const attacksHtml = c.type === 'npc' && c.attacks && c.attacks.length > 0
                 ? '<div class="mb-2">'
-                  + '<div class="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1">Attacks</div>'
-                  + '<div class="space-y-1">'
-                  + c.attacks.map((atk, idx) => {
-                      const typeEmoji = {slashing:'⚔',piercing:'🗡',bludgeoning:'🔨',fire:'🔥',cold:'❄',lightning:'⚡',poison:'☠',acid:'🧪',necrotic:'💀',radiant:'✨',psychic:'🧠',force:'💥',thunder:'🌩'}[atk.damageType] || '⚔';
-                      const typeColor = {slashing:'border-orange-700',piercing:'border-yellow-700',bludgeoning:'border-stone-600',fire:'border-red-700',cold:'border-blue-400',lightning:'border-yellow-400',poison:'border-green-700',acid:'border-lime-600',necrotic:'border-purple-800',radiant:'border-yellow-300',psychic:'border-pink-600',force:'border-indigo-500',thunder:'border-sky-600'}[atk.damageType] || 'border-gray-600';
-                      const avgRoll = Math.round(atk.count * ((atk.die + 1) / 2) + (atk.bonus || 0));
-                      const dice    = atk.count + 'd' + atk.die + (atk.bonus ? (atk.bonus > 0 ? '+' + atk.bonus : atk.bonus) : '');
-
-                      // Cooldown state
-                      if (!c.rechargeCounters) c.rechargeCounters = {};
-                      const curCount  = c.rechargeCounters[idx];
-                      const recharging = typeof curCount === 'number' && curCount > 0;
-
-                      // Attack button
-                      const atkBtn = '<button class="atk-btn flex-1 text-left rounded border-l-4 ' + typeColor + ' bg-gray-950 px-3 py-2 flex justify-between items-center border border-gray-600' + (recharging ? ' opacity-40' : ' hover:bg-gray-700') + '"'
-                          + (recharging ? ' style="cursor:not-allowed"' : '')
-                          + ' data-eid="' + e.id + '" data-cid="' + c.id + '" data-idx="' + idx + '">'
-                          + '<span class="font-semibold text-sm">' + typeEmoji + ' ' + atk.name + '</span>'
-                          + '<span class="text-xs font-mono" style="color:#9ca3af">' + dice + ' · avg <strong style="color:' + (recharging ? '#4b5563' : '#fff') + '">' + avgRoll + '</strong> ' + atk.damageType + '</span>'
-                          + '</button>';
-
-                      // Cooldown pill
-                      const rechargePill = recharging
-                          ? ('<span style="min-width:52px;padding:6px 8px;border-radius:8px;font-size:12px;font-weight:700;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;display:inline-block;text-align:center;cursor:default">'
-                            + '⏳ ' + curCount + ' rd' + (curCount === 1 ? '' : 's') + '</span>')
-                          : ('<select onchange="if(this.value){tickRecharge(' + e.id + ',' + c.id + ',' + idx + ',parseInt(this.value));this.selectedIndex=0;}"'
-                            + ' style="min-width:52px;padding:5px 4px;border-radius:8px;font-size:12px;background:#111827;border:1px solid #374151;color:#9ca3af;cursor:pointer">'
-                            + '<option value="">CD</option>'
-                            + '<option value="1">1 rd</option>'
-                            + '<option value="2">2 rds</option>'
-                            + '<option value="3">3 rds</option>'
-                            + '<option value="4">4 rds</option>'
-                            + '<option value="5">5 rds</option>'
-                            + '<option value="6">6 rds</option>'
-                            + '</select>');
-
-                      return '<div class="flex gap-2 items-center mb-1">' + atkBtn + rechargePill + '</div>';
-
-                  }).join('')
-                  + '</div></div>'
+                  + (!isAttacking
+                    ? '<button onclick="rollToHit(' + e.id + ',' + c.id + ')" style="width:100%;padding:10px;border-radius:10px;font-weight:700;font-size:13px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;cursor:pointer">' + rollBtnLabel + '</button>'
+                    : '<div class="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1">Choose Attack</div>'
+                      + '<div class="space-y-1">'
+                      + c.attacks.map((atk, idx) => {
+                          const typeEmoji = {slashing:'⚔',piercing:'🗡',bludgeoning:'🔨',fire:'🔥',cold:'❄',lightning:'⚡',poison:'☠',acid:'🧪',necrotic:'💀',radiant:'✨',psychic:'🧠',force:'💥',thunder:'🌩'}[atk.damageType] || '⚔';
+                          const typeColor = {slashing:'border-orange-700',piercing:'border-yellow-700',bludgeoning:'border-stone-600',fire:'border-red-700',cold:'border-blue-400',lightning:'border-yellow-400',poison:'border-green-700',acid:'border-lime-600',necrotic:'border-purple-800',radiant:'border-yellow-300',psychic:'border-pink-600',force:'border-indigo-500',thunder:'border-sky-600'}[atk.damageType] || 'border-gray-600';
+                          const avgRoll   = Math.round(atk.count * ((atk.die + 1) / 2) + (atk.bonus || 0));
+                          const dice      = atk.count + 'd' + atk.die + (atk.bonus ? (atk.bonus > 0 ? '+' + atk.bonus : atk.bonus) : '');
+                          if (!c.rechargeCounters) c.rechargeCounters = {};
+                          const curCount  = c.rechargeCounters[idx];
+                          const recharging = typeof curCount === 'number' && curCount > 0;
+                          const atkBtn = '<button class="atk-btn flex-1 text-left rounded border-l-4 ' + typeColor + ' bg-gray-950 px-3 py-2 flex justify-between items-center border border-gray-600' + (recharging ? ' opacity-40' : ' hover:bg-gray-700') + '"'
+                              + (recharging ? ' style="cursor:not-allowed"' : '')
+                              + ' data-eid="' + e.id + '" data-cid="' + c.id + '" data-idx="' + idx + '">'
+                              + '<span class="font-semibold text-sm">' + typeEmoji + ' ' + atk.name + '</span>'
+                              + '<span class="text-xs font-mono" style="color:#9ca3af">' + dice + ' · avg <strong style="color:' + (recharging ? '#4b5563' : '#fff') + '">' + avgRoll + '</strong> ' + atk.damageType + '</span>'
+                              + '</button>';
+                          const rechargePill = recharging
+                              ? ('<span style="min-width:52px;padding:6px 8px;border-radius:8px;font-size:12px;font-weight:700;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;display:inline-block;text-align:center;cursor:default">⏳ ' + curCount + ' rd' + (curCount === 1 ? '' : 's') + '</span>')
+                              : ('<select onchange="if(this.value){tickRecharge(' + e.id + ',' + c.id + ',' + idx + ',parseInt(this.value));this.selectedIndex=0;}" style="min-width:52px;padding:5px 4px;border-radius:8px;font-size:12px;background:#111827;border:1px solid #374151;color:#9ca3af;cursor:pointer"><option value="">CD</option><option value="1">1 rd</option><option value="2">2 rds</option><option value="3">3 rds</option><option value="4">4 rds</option><option value="5">5 rds</option><option value="6">6 rds</option></select>');
+                          return '<div class="flex gap-2 items-center mb-1">' + atkBtn + rechargePill + '</div>';
+                      }).join('')
+                      + '</div>')
+                  + '</div>'
                 : (c.type === 'npc' ? '<div class="text-gray-600 text-xs mb-2">No attacks defined</div>' : '');
 
             // NPC stat line
