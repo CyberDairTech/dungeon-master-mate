@@ -1049,6 +1049,7 @@
         const MAX_ATTACKS_PER_TURN = 3;
 
         const rollBanners = {}; // { cId: { d20, bonus, total, isCrit, isFumble } }
+        const dmgBanners  = {}; // { cId: { atkName, total, diceLabel, damageType, isCrit } }
 
         function rollAttackCheck(eId, cId) {
             const eIdx = encounters.findIndex(en => en.id === eId);
@@ -1085,6 +1086,23 @@
             // Mark this combatant as having rolled — reveals the banner + Hit/Crit/Miss buttons
             rolledNow.add(cId);
             renderEncounters();
+        }
+
+        function moveNPC(eId, cId) {
+            const eIdx = encounters.findIndex(en => en.id === eId);
+            if (eIdx === -1) return;
+            const c = encounters[eIdx].combatants.find(co => co.id === cId);
+            if (!c) return;
+
+            const atkNum = turnAttackCount[cId] || 0;
+            if (atkNum >= MAX_ATTACKS_PER_TURN) {
+                alert(c.name + ' has already used ' + MAX_ATTACKS_PER_TURN + ' actions this turn. End the turn before acting again.');
+                return;
+            }
+
+            turnAttackCount[cId] = atkNum + 1;
+            showToast('🏃 ' + c.name + ' moved (Action ' + (atkNum + 1) + '/' + MAX_ATTACKS_PER_TURN + ')');
+            save(); renderEncounters();
         }
 
         function resolveAttackRoll(eId, cId, outcome) {
@@ -1147,10 +1165,15 @@
             attackingNow.delete(cId);
             critNow.delete(cId);
 
-            save(); renderEncounters();
-
             const diceLabel = atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '') + ' ' + atk.damageType + (isCrit ? ' (CRIT x2)' : '');
-            showDiceRoll((isCrit ? '💥 ' : '') + atk.name, total, diceLabel, atk.damageType);
+            dmgBanners[cId] = { atkName: atk.name, total, diceLabel, damageType: atk.damageType, isCrit };
+
+            save(); renderEncounters();
+        }
+
+        function dismissDmgBanner(cId) {
+            delete dmgBanners[cId];
+            renderEncounters();
         }
         function tickRecharge(eId, cId, atkIdx, value) {
 
@@ -1174,21 +1197,38 @@
 
 
 
+        // ▶ Start Turn — resets ONLY the per-turn attack/action counter and clears
+        // any in-progress roll/attack UI state. Does not touch ailments or cooldowns.
         function startTurn(eId, cId) {
             const eIdx = encounters.findIndex(en => en.id === eId);
             if (eIdx === -1) return;
             const c = encounters[eIdx].combatants.find(co => co.id === cId);
             if (!c) return;
-            // Reset attack state and turn counter for this combatant
+
             attackingNow.delete(cId);
             critNow.delete(cId);
             rolledNow.delete(cId);
             delete rollBanners[cId];
+            delete dmgBanners[cId];
             turnAttackCount[cId] = 0;
+
+            save();
+            renderEncounters();
+
+            const el = document.getElementById('comb-' + cId);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+            showToast('▶ ' + c.name + '\'s turn has begun — 3 actions available');
+        }
+
+        // ⏹ End Turn — applies ailment damage/round-down and decrements cooldowns.
+        // Does not touch the action counter (that only resets on Start Turn).
+        function endTurn(eId, cId) {
+            const eIdx = encounters.findIndex(en => en.id === eId);
+            if (eIdx === -1) return;
+            const c = encounters[eIdx].combatants.find(co => co.id === cId);
+            if (!c) return;
             const messages = [];
-            // Reset turn attack counter and hide attack list
-            
-            attackingNow.delete(cId);
 
             // ── Ailments ──────────────────────────────────────────────
             if (c.ailments && c.ailments.length > 0) {
@@ -1230,24 +1270,182 @@
                 });
             }
 
-            // Reset per-turn attack tracking
-            turnAttackCount[cId] = 0;
-            attackingNow.delete(cId);
-
-            // Reset turn state for this combatant
-            attackingNow.delete(cId);
-            delete turnAttackCount[cId];
-
             save();
-            renderEncounters();
 
-            // Scroll to this combatant's card
-            const el = document.getElementById('comb-' + cId);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            // Advance the turn tracker to the next combatant in initiative order
+            advanceTurn(eId, cId);
 
-            showToast(messages.length === 0
-                ? '▶ ' + c.name + '\'s turn — no active effects'
-                : '▶ ' + c.name + '\'s turn:\n' + messages.join('\n'));
+            if (messages.length > 0) {
+                showToast('⏹ ' + c.name + '\'s turn ended:\n' + messages.join('\n'));
+            }
+        }
+
+        // ── Encounter Scaling (D&D 5e DMG encounter-difficulty standards) ─────
+
+        // XP Thresholds by Character Level — DMG p.82 (2014 core rules)
+        const XP_THRESHOLDS = {
+            1:  { easy: 25,   medium: 50,   hard: 75,   deadly: 100   },
+            2:  { easy: 50,   medium: 100,  hard: 150,  deadly: 200   },
+            3:  { easy: 75,   medium: 150,  hard: 225,  deadly: 400   },
+            4:  { easy: 125,  medium: 250,  hard: 375,  deadly: 500   },
+            5:  { easy: 250,  medium: 500,  hard: 750,  deadly: 1100  },
+            6:  { easy: 300,  medium: 600,  hard: 900,  deadly: 1400  },
+            7:  { easy: 350,  medium: 750,  hard: 1100, deadly: 1700  },
+            8:  { easy: 450,  medium: 900,  hard: 1400, deadly: 2100  },
+            9:  { easy: 550,  medium: 1100, hard: 1600, deadly: 2400  },
+            10: { easy: 600,  medium: 1200, hard: 1900, deadly: 2800  },
+            11: { easy: 800,  medium: 1600, hard: 2400, deadly: 3600  },
+            12: { easy: 1000, medium: 2000, hard: 3000, deadly: 4500  },
+            13: { easy: 1100, medium: 2200, hard: 3400, deadly: 5100  },
+            14: { easy: 1250, medium: 2500, hard: 3800, deadly: 5700  },
+            15: { easy: 1400, medium: 2800, hard: 4300, deadly: 6400  },
+            16: { easy: 1600, medium: 3200, hard: 4800, deadly: 7200  },
+            17: { easy: 2000, medium: 3900, hard: 5900, deadly: 8800  },
+            18: { easy: 2100, medium: 4200, hard: 6300, deadly: 9500  },
+            19: { easy: 2400, medium: 4900, hard: 7300, deadly: 10900 },
+            20: { easy: 2800, medium: 5700, hard: 8500, deadly: 12700 },
+        };
+
+        // DMG Encounter Multiplier by monster count
+        function encounterMultiplier(monsterCount) {
+            if (monsterCount <= 1) return 1;
+            if (monsterCount === 2) return 1.5;
+            if (monsterCount <= 6) return 2;
+            if (monsterCount <= 10) return 2.5;
+            if (monsterCount <= 14) return 3;
+            return 4;
+        }
+
+        function ensureScaleState(e) {
+            if (!e.scale) e.scale = { partySize: 4, partyLevel: 3 };
+        }
+
+        // Computes current difficulty for the encounter's live NPCs against the saved party settings
+        function computeEncounterDifficulty(e) {
+            ensureScaleState(e);
+            const { partySize, partyLevel } = e.scale;
+            const thresholds = XP_THRESHOLDS[Math.min(20, Math.max(1, partyLevel))];
+
+            const aliveNpcs = e.combatants.filter(c => c.type === 'npc' && c.hp > 0);
+            const totalXP   = aliveNpcs.reduce((s, c) => s + (c.xp || 0), 0);
+            const mult      = encounterMultiplier(aliveNpcs.length);
+            const adjXP     = Math.round(totalXP * mult);
+
+            const partyEasy   = thresholds.easy   * partySize;
+            const partyMedium = thresholds.medium * partySize;
+            const partyHard   = thresholds.hard   * partySize;
+            const partyDeadly = thresholds.deadly * partySize;
+
+            let label = 'Trivial', color = '#6b7280';
+            if (adjXP >= partyDeadly)      { label = 'Deadly'; color = '#f87171'; }
+            else if (adjXP >= partyHard)   { label = 'Hard';   color = '#fb923c'; }
+            else if (adjXP >= partyMedium) { label = 'Medium'; color = '#fde047'; }
+            else if (adjXP >= partyEasy)   { label = 'Easy';   color = '#86efac'; }
+
+            return { totalXP, mult, adjXP, label, color, partyEasy, partyMedium, partyHard, partyDeadly, monsterCount: aliveNpcs.length };
+        }
+
+        function setEncounterScale(eId, field, value) {
+            const e = encounters.find(en => en.id === eId);
+            if (!e) return;
+            ensureScaleState(e);
+            e.scale[field] = Math.max(1, parseInt(value) || 1);
+            save(); renderEncounters();
+        }
+
+        // Scales all living NPCs' HP and attack damage bonus up/down by a percentage.
+        // Used to nudge an encounter toward a target difficulty without re-picking monsters.
+        function scaleEncounterPower(eId, pct) {
+            const e = encounters.find(en => en.id === eId);
+            if (!e) return;
+            const factor = 1 + (pct / 100);
+            e.combatants.forEach(c => {
+                if (c.type !== 'npc') return;
+                const newMax = Math.max(1, Math.round(c.maxHp * factor));
+                // Preserve current damage ratio when scaling max HP
+                const ratio = c.maxHp > 0 ? c.hp / c.maxHp : 1;
+                c.maxHp = newMax;
+                c.hp    = Math.max(c.hp === 0 ? 0 : 1, Math.round(newMax * ratio));
+                if (c.attacks) {
+                    c.attacks.forEach(a => {
+                        a.bonus = Math.round((a.bonus || 0) * factor);
+                    });
+                }
+            });
+            save(); renderEncounters();
+            showToast((pct > 0 ? '⬆ Scaled up ' : '⬇ Scaled down ') + Math.abs(pct) + '% — HP & damage adjusted');
+        }
+
+        // ── Turn Order Tracking ─────────────────────────────────────────────
+        // Each encounter gets:
+        //   e.activeTurnId  — id of the combatant whose turn it currently is (null = not started)
+        //   e.actedIds      — array of combatant ids who have already gone this round
+        //   e.roundNumber   — current round number (starts at 1)
+
+        function ensureTurnState(e) {
+            if (e.activeTurnId === undefined) e.activeTurnId = null;
+            if (!Array.isArray(e.actedIds)) e.actedIds = [];
+            if (!e.roundNumber) e.roundNumber = 1;
+        }
+
+        // Returns combatants sorted so the active turn is first, then remaining
+        // unacted combatants by initiative, then already-acted combatants at the bottom.
+        function sortByTurnOrder(e) {
+            ensureTurnState(e);
+            const byInit = [...e.combatants].sort((a, b) => b.init - a.init);
+
+            if (e.activeTurnId == null) {
+                // No active turn yet — just show plain initiative order
+                return byInit;
+            }
+
+            const acted  = byInit.filter(c => e.actedIds.includes(c.id) && c.id !== e.activeTurnId);
+            const active = byInit.filter(c => c.id === e.activeTurnId);
+            const upNext = byInit.filter(c => !e.actedIds.includes(c.id) && c.id !== e.activeTurnId);
+
+            return [...active, ...upNext, ...acted];
+        }
+
+        // Begin the encounter's turn cycle — sets the first combatant (by initiative) as active
+        function beginEncounterRound(eId) {
+            const e = encounters.find(en => en.id === eId);
+            if (!e || e.combatants.length === 0) return;
+            ensureTurnState(e);
+            const byInit = [...e.combatants].sort((a, b) => b.init - a.init);
+            e.activeTurnId = byInit[0].id;
+            e.actedIds     = [];
+            e.roundNumber  = 1;
+            save(); renderEncounters();
+            showToast('🔄 Round 1 begins — ' + byInit[0].name + "'s turn");
+        }
+
+        // Advance from the current active combatant to the next one in initiative order.
+        // Wraps to a new round when everyone has gone.
+        function advanceTurn(eId, finishedId) {
+            const e = encounters.find(en => en.id === eId);
+            if (!e) return;
+            ensureTurnState(e);
+
+            if (!e.actedIds.includes(finishedId)) e.actedIds.push(finishedId);
+
+            const byInit  = [...e.combatants].sort((a, b) => b.init - a.init);
+            const remaining = byInit.filter(c => !e.actedIds.includes(c.id));
+
+            if (remaining.length > 0) {
+                e.activeTurnId = remaining[0].id;
+                save(); renderEncounters();
+                showToast('▶ ' + remaining[0].name + "'s turn (Round " + e.roundNumber + ')');
+            } else {
+                // Everyone has acted — start a new round
+                e.roundNumber += 1;
+                e.actedIds     = [];
+                e.activeTurnId = byInit[0].id;
+                save(); renderEncounters();
+                showToast('🔄 Round ' + e.roundNumber + ' begins — ' + byInit[0].name + "'s turn");
+            }
+
+            const el = document.getElementById('enc-' + eId);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
         // ── Encounters ───────────────────────────────────────────────────
@@ -1279,6 +1477,33 @@
             closeModal('delete-encounter-modal');
         }
 
+        // Returns a unique display name for a new combatant, appending a number
+        // if one or more combatants with the same base name already exist.
+        // "Goblin" + "Goblin" -> "Goblin 1", "Goblin 2". A third add renames
+        // nothing retroactively — it just continues the count.
+        function uniqueCombatantName(e, baseName) {
+            // Strip any existing trailing " N" from the base name for comparison
+            const strip = (n) => n.replace(/\s+\d+$/, '');
+            const cleanBase = strip(baseName);
+
+            const existing = e.combatants.filter(c => strip(c.name) === cleanBase);
+            if (existing.length === 0) return baseName;
+
+            // First duplicate: rename the original (if it doesn't already have a number) to "Name 1"
+            const firstHasNumber = /\s+\d+$/.test(existing[0].name);
+            if (existing.length === 1 && !firstHasNumber) {
+                existing[0].name = cleanBase + ' 1';
+            }
+
+            // Find the highest existing number for this base name and increment
+            let maxNum = 1;
+            existing.forEach(c => {
+                const m = c.name.match(/\s+(\d+)$/);
+                if (m) maxNum = Math.max(maxNum, parseInt(m[1]));
+            });
+            return cleanBase + ' ' + (maxNum + 1);
+        }
+
         function addNPCToEncounter(eId, src) {
             const e = encounters.find(en => en.id === eId);
             if (!e || !src) return;
@@ -1288,8 +1513,9 @@
             const per     = src.perception || Math.max(0, Math.floor(crNum / 4));
             const xp      = src.xpByCR    || crToXP(crNum);
             const finalHp = src.isBoss ? hp * 2 : hp;
+            const uniqueName = uniqueCombatantName(e, src.name);
             e.combatants.push({
-                id: Date.now(), name: src.name,
+                id: Date.now(), name: uniqueName,
                 xp, hp: finalHp, maxHp: finalHp,
                 ac, perception: per,
                 init: Math.floor(Math.random() * 20) + 1,
@@ -1345,7 +1571,7 @@
 
         function renderEncounters() {
             document.getElementById('encounter-list').innerHTML = encounters.map(e => {
-                const sorted   = [...e.combatants].sort((a, b) => b.init - a.init);
+                const sorted   = sortByTurnOrder(e);
                 const earnedXP = e.combatants.reduce((s, c) => s + (c.type === 'npc' && c.hp === 0 ? (c.xp || 0) : 0), 0);
                 const totalXP  = e.combatants.reduce((s, c) => s + (c.type === 'npc' ? (c.xp || 0) : 0), 0);
                 const isExp    = expandedEncounters.has(e.id);
@@ -1430,13 +1656,23 @@
         }
 
         function renderEncounterBody(e, sorted) {
+            ensureTurnState(e);
             const playerOpts = players.map(p => '<option value="' + p.name.replace(/"/g, '&quot;') + '">' + p.name + '</option>').join('');
+
+            const turnBar = e.combatants.length === 0 ? '' :
+                (e.activeTurnId == null
+                    ? '<button onclick="beginEncounterRound(' + e.id + ')" style="width:100%;padding:10px;border-radius:10px;font-weight:700;font-size:13px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);color:#86efac;cursor:pointer;margin-bottom:12px">🔄 Begin Round 1</button>'
+                    : '<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(234,179,8,0.08);border:1px solid rgba(234,179,8,0.25);border-radius:10px;padding:8px 12px;margin-bottom:12px">'
+                      + '<span style="font-size:12px;color:#fde047;font-weight:700">🔄 Round ' + e.roundNumber + '</span>'
+                      + '<span style="font-size:11px;color:#9ca3af">' + e.actedIds.length + '/' + e.combatants.length + ' acted this round</span>'
+                      + '</div>');
 
             let html = '<div class="flex gap-2 mb-3">'
                 + '<button onclick="openNpcPicker(' + e.id + ')" class="bg-gray-700 p-2 rounded text-xs flex-1 text-left">🔍 + NPC</button>'
                 + '<select onchange="if(this.value){addPlayerToEncounter(' + e.id + ',this.value);this.value=\'\';}" class="bg-gray-700 p-2 rounded text-xs flex-1">'
                 + '<option value="">+ Player</option>' + playerOpts + '</select>'
                 + '</div>'
+                + turnBar
                 + '<div class="space-y-2">' + sorted.map(c => renderCombatant(e, c)).join('') + '</div>';
             return html;
         }
@@ -1484,6 +1720,21 @@
             const penalty      = atkNum >= 2 ? -10 : atkNum === 1 ? -5 : 0;
             const attackLabel  = 'Attack ' + (atkNum + 1) + (penalty !== 0 ? ' (' + penalty + ')' : '');
             const capped       = atkNum >= 3;
+
+            // Damage roll banner (shown after picking an attack)
+            const dmgB = dmgBanners[c.id];
+            const dmgBannerHtml = dmgB
+                ? (function() {
+                    const dColor = dmgB.isCrit ? 'rgba(234,179,8,0.15);border:1px solid rgba(234,179,8,0.5)' : 'rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.35)';
+                    const dTextColor = dmgB.isCrit ? '#fde047' : '#93c5fd';
+                    return '<div style="background:' + dColor + ';border-radius:8px;padding:8px 10px;margin-bottom:8px;text-align:center">'
+                      + '<div style="font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:2px">' + (dmgB.isCrit ? '💥 ' : '') + dmgB.atkName + '</div>'
+                      + '<div style="font-size:30px;font-weight:900;color:' + dTextColor + '">' + dmgB.total + '</div>'
+                      + '<div style="font-size:11px;color:#9ca3af">' + dmgB.diceLabel + '</div>'
+                      + '<button onclick="dismissDmgBanner(' + c.id + ')" style="margin-top:6px;font-size:11px;padding:3px 12px;border-radius:6px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#d1d5db;cursor:pointer">Dismiss</button>'
+                    + '</div>';
+                  })()
+                : '';
 
             const attacksHtml = c.type === 'npc' && c.attacks && c.attacks.length > 0
                 ? '<div class="mb-2">'
@@ -1539,16 +1790,30 @@
                 ? '<div class="text-xs text-gray-400 mb-2">AC ' + c.ac + ' · Perc ' + c.perception + (c.resistance !== 'None' ? ' · Res: ' + c.resistance : '') + (c.cr ? ' · CR ' + c.cr : '') + '</div>'
                 : '';
 
-            return '<div class="bg-gray-700 p-3 rounded text-sm relative" id="comb-' + c.id + '">'
+            const isActiveTurn = e.activeTurnId === c.id;
+            const cardBorder = isActiveTurn ? 'border:2px solid rgba(234,179,8,0.7);box-shadow:0 0 12px rgba(234,179,8,0.25)' : 'border:2px solid transparent';
+            return '<div class="bg-gray-700 p-3 rounded text-sm relative" id="comb-' + c.id + '" style="' + cardBorder + '">'
+                + (isActiveTurn ? '<div style="position:absolute;top:-9px;left:10px;background:#eab308;color:#111827;font-size:10px;font-weight:800;padding:1px 8px;border-radius:6px;letter-spacing:0.03em;z-index:5">CURRENT TURN</div>' : '')
                 + deadOverlay
                 + '<div class="flex justify-between items-center mb-1">'
                 + '<div class="flex items-center gap-2">' + initHtml + '<span class="font-bold">' + c.name + (c.isBoss ? ' 👑' : '') + '</span></div>'
-                + (c.type === 'npc' && !isDead ? '<button onclick="startTurn(' + e.id + ',' + c.id + ')" style="font-size:11px;padding:3px 10px;border-radius:6px;font-weight:700;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;cursor:pointer;white-space:nowrap">▶ Start Turn</button>' : '')
+                + (c.type === 'npc' && !isDead
+                    ? '<div class="flex gap-1">'
+                      + '<button onclick="moveNPC(' + e.id + ',' + c.id + ')" style="font-size:11px;padding:3px 9px;border-radius:6px;font-weight:700;background:rgba(56,189,248,0.15);border:1px solid rgba(56,189,248,0.4);color:#7dd3fc;cursor:pointer;white-space:nowrap">🏃 Move</button>'
+                      + '<button onclick="startTurn(' + e.id + ',' + c.id + ')" style="font-size:11px;padding:3px 9px;border-radius:6px;font-weight:700;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;cursor:pointer;white-space:nowrap">▶ Start Turn</button>'
+                      + '</div>'
+                    : '')
                 + '</div>'
                 + statLine
                 + hpHtml
+                + dmgBannerHtml
                 + attacksHtml
                 + renderAilmentControl(e, c)
+                + (c.type === 'npc' && !isDead
+                    ? '<button onclick="endTurn(' + e.id + ',' + c.id + ')" style="width:100%;margin-top:8px;padding:8px;border-radius:8px;font-weight:700;font-size:12px;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);color:#fca5a5;cursor:pointer">⏹ End Turn (apply ailments &amp; cooldowns)</button>'
+                    : (c.type === 'player' && e.activeTurnId === c.id
+                        ? '<button onclick="advanceTurn(' + e.id + ',' + c.id + ')" style="width:100%;margin-top:8px;padding:8px;border-radius:8px;font-weight:700;font-size:12px;background:rgba(148,163,184,0.12);border:1px solid rgba(148,163,184,0.3);color:#cbd5e1;cursor:pointer">✅ Done — Pass Turn</button>'
+                        : ''))
                 + '</div>';
         }
 
