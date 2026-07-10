@@ -1048,6 +1048,8 @@
 
         const MAX_ATTACKS_PER_TURN = 3;
 
+        const rollBanners = {}; // { cId: { d20, bonus, total, isCrit, isFumble } }
+
         function rollAttackCheck(eId, cId) {
             const eIdx = encounters.findIndex(en => en.id === eId);
             if (eIdx === -1) return;
@@ -1070,11 +1072,17 @@
                 return !(typeof cd === 'number' && cd > 0);
             });
             const baseBonus = available.length > 0 ? Math.max(...available.map(a => a.attackBonus || 0)) : 0;
+            const bonus     = baseBonus + penalty;
 
-            const label = c.name + ' — Attack ' + (atkNum + 1) + (penalty !== 0 ? ' (' + penalty + ')' : '');
-            showAtkRoll(label, baseBonus + penalty);
+            // Roll the d20 and store the result for this combatant's card banner
+            const d20      = Math.floor(Math.random() * 20) + 1;
+            const total     = d20 + bonus;
+            const isCrit    = d20 === 20;
+            const isFumble  = d20 === 1;
 
-            // Mark this combatant as having rolled — reveals Hit/Crit/Miss buttons
+            rollBanners[cId] = { d20, bonus, total, isCrit, isFumble, atkNum };
+
+            // Mark this combatant as having rolled — reveals the banner + Hit/Crit/Miss buttons
             rolledNow.add(cId);
             renderEncounters();
         }
@@ -1089,6 +1097,7 @@
             // Always increment the turn counter, regardless of outcome
             turnAttackCount[cId] = (turnAttackCount[cId] || 0) + 1;
             rolledNow.delete(cId);
+            delete rollBanners[cId];
 
             if (outcome === 'miss') {
                 showToast('❌ ' + c.name + ' missed');
@@ -1174,6 +1183,7 @@
             attackingNow.delete(cId);
             critNow.delete(cId);
             rolledNow.delete(cId);
+            delete rollBanners[cId];
             turnAttackCount[cId] = 0;
             const messages = [];
             // Reset turn attack counter and hide attack list
@@ -1502,8 +1512,21 @@
                       + '</div>')
                     : (!hasRolled
                       ? ('<button class="atk-roll-btn" data-eid="' + e.id + '" data-cid="' + c.id + '" data-capped="' + (capped ? '1' : '0') + '" style="width:100%;padding:10px;border-radius:10px;font-weight:700;font-size:13px;background:' + (capped ? 'rgba(107,114,128,0.15);border:1px solid rgba(107,114,128,0.3);color:#9ca3af' : 'rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc') + ';cursor:pointer">' + (capped ? '🚫 Turn Complete (3/3 Attacks Used)' : '🎲 Roll to Hit — ' + attackLabel) + '</button>')
-                      : ('<div class="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1">' + attackLabel + ' Result</div>'
-                        + '<div class="grid grid-cols-3 gap-1">'
+                      : (function() {
+                          const rb = rollBanners[c.id];
+                          if (!rb) return '';
+                          const bColor = rb.isCrit ? 'rgba(234,179,8,0.15);border:1px solid rgba(234,179,8,0.5)' : rb.isFumble ? 'rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.5)' : 'rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3)';
+                          const bTextColor = rb.isCrit ? '#fde047' : rb.isFumble ? '#f87171' : '#e5e7eb';
+                          const bonusStr = rb.bonus !== 0 ? (rb.bonus > 0 ? ' + ' + rb.bonus : ' − ' + Math.abs(rb.bonus)) : '';
+                          const resultNote = rb.isCrit ? '🎯 Natural 20!' : rb.isFumble ? '💢 Natural 1!' : 'vs target AC';
+                          return '<div style="background:' + bColor + ';border-radius:8px;padding:8px 10px;margin-bottom:8px;text-align:center">'
+                            + '<div style="font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:2px">' + attackLabel + '</div>'
+                            + '<div style="font-size:26px;font-weight:900;color:' + bTextColor + '">' + rb.d20 + bonusStr + ' = ' + rb.total + '</div>'
+                            + '<div style="font-size:11px;color:#9ca3af">' + resultNote + '</div>'
+                          + '</div>'
+                            + '<div class="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1">Select Outcome</div>'
+                      })()
+                      + ('<div class="grid grid-cols-3 gap-1">'
                         + '<button onclick="resolveAttackRoll(' + e.id + ',' + c.id + ',\'hit\')" style="padding:10px 4px;border-radius:8px;font-weight:700;font-size:12px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);color:#86efac;cursor:pointer">✅ Hit</button>'
                         + '<button onclick="resolveAttackRoll(' + e.id + ',' + c.id + ',\'crit\')" style="padding:10px 4px;border-radius:8px;font-weight:700;font-size:12px;background:rgba(234,179,8,0.18);border:1px solid rgba(234,179,8,0.5);color:#fde047;cursor:pointer">💥 Crit</button>'
                         + '<button onclick="resolveAttackRoll(' + e.id + ',' + c.id + ',\'miss\')" style="padding:10px 4px;border-radius:8px;font-weight:700;font-size:12px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;cursor:pointer">❌ Miss</button>'
