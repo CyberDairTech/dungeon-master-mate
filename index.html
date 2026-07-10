@@ -402,6 +402,7 @@
         let pendingNPC     = null;
         const healingMode     = new Set(); // tracks which combatants are in healing mode
         const attackingNow    = new Set(); // combatant confirmed a hit, picking attack
+        const critNow         = new Set(); // combatant's pending attack choice is a critical hit
         const turnAttackCount = {};         // { cId: n } attacks used this turn, resets on Start Turn
         let expandedEncounters = new Set();
         let editingEncounterName = new Set();
@@ -1053,32 +1054,28 @@
             document.getElementById('atk-roll-overlay').classList.remove('hidden');
         }
 
-        function rollToHit(eId, cId) {
+        function resolveAttackRoll(eId, cId, outcome) {
+            // outcome: 'hit' | 'crit' | 'miss'
             const eIdx = encounters.findIndex(en => en.id === eId);
             if (eIdx === -1) return;
-            const cIdx = encounters[eIdx].combatants.findIndex(co => co.id === cId);
-            if (cIdx === -1) return;
-            const c = encounters[eIdx].combatants[cIdx];
-            if (!c.rechargeCounters) c.rechargeCounters = {};
+            const c = encounters[eIdx].combatants.find(co => co.id === cId);
+            if (!c) return;
 
-            // Multi-attack penalty based on how many attacks used this turn
-            const atkNum  = (turnAttackCount[cId] || 0) + 1;
-            const penalty = atkNum >= 3 ? -10 : atkNum === 2 ? -5 : 0;
+            // Always increment the turn counter, regardless of outcome
+            turnAttackCount[cId] = (turnAttackCount[cId] || 0) + 1;
 
-            // Best available attack bonus from non-CD-locked attacks
-            const available = (c.attacks || []).filter((a, i) => {
-                const cd = c.rechargeCounters[i];
-                return !(typeof cd === 'number' && cd > 0);
-            });
-            const baseBonus  = available.length > 0 ? Math.max(...available.map(a => a.attackBonus || 0)) : 0;
-            const totalBonus = baseBonus + penalty;
-
-            const label = c.name + ' — Attack ' + atkNum + (penalty !== 0 ? ' (' + penalty + ' penalty)' : '');
-
-            showAtkRoll(label, totalBonus, () => {
-                attackingNow.add(cId);
+            if (outcome === 'miss') {
+                showToast('❌ ' + c.name + ' missed');
+                attackingNow.delete(cId);
+                critNow.delete(cId);
                 renderEncounters();
-            });
+                return;
+            }
+
+            // Hit or Crit — reveal the attack list
+            attackingNow.add(cId);
+            if (outcome === 'crit') critNow.add(cId); else critNow.delete(cId);
+            renderEncounters();
         }
 
         function rollAttack(eId, cId, atkIdx) {
@@ -1103,19 +1100,22 @@
                 c.rechargeCounters[atkIdx] = atk.rechargeOn;
             }
 
-            // Increment this turn's attack counter
-            turnAttackCount[cId] = (turnAttackCount[cId] || 0) + 1;
+            const isCrit = critNow.has(cId);
 
             // Roll damage
             let total = 0;
             for (let i = 0; i < atk.count; i++) total += Math.floor(Math.random() * atk.die) + 1;
             total += atk.bonus || 0;
+            if (isCrit) total *= 2;
 
             // Revert to roll-to-hit state
             attackingNow.delete(cId);
+            critNow.delete(cId);
 
             save(); renderEncounters();
-            showDiceRoll(atk.name, total, atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '') + ' ' + atk.damageType, atk.damageType);
+
+            const diceLabel = atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '') + ' ' + atk.damageType + (isCrit ? ' (CRIT x2)' : '');
+            showDiceRoll((isCrit ? '💥 ' : '') + atk.name, total, diceLabel, atk.damageType);
         }
         function tickRecharge(eId, cId, atkIdx, value) {
 
@@ -1146,10 +1146,11 @@
             if (!c) return;
             // Reset attack state and turn counter for this combatant
             attackingNow.delete(cId);
+            critNow.delete(cId);
             turnAttackCount[cId] = 0;
             const messages = [];
             // Reset turn attack counter and hide attack list
-            c.turnAttackCount = 0;
+            
             attackingNow.delete(cId);
 
             // ── Ailments ──────────────────────────────────────────────
@@ -1193,8 +1194,8 @@
             }
 
             // Reset per-turn attack tracking
-            turnAttacks[cId] = 0;
-            pendingHit.delete(cId);
+            turnAttackCount[cId] = 0;
+            attackingNow.delete(cId);
 
             // Reset turn state for this combatant
             attackingNow.delete(cId);
@@ -1439,17 +1440,22 @@
 
             // Attacks (NPC only)
             // Turn state
-            const atkNum      = turnAttackCount[c.id] || 0;
-            const isAttacking = attackingNow.has(c.id);
-            const penalty     = atkNum >= 2 ? -10 : atkNum === 1 ? -5 : 0;
-            const penaltyNote = penalty < 0 ? ' (' + penalty + ')' : '';
-            const rollBtnLabel = '🎲 Roll to Hit — Attack ' + (atkNum + 1) + penaltyNote;
+            const atkNum       = turnAttackCount[c.id] || 0;
+            const isAttacking  = attackingNow.has(c.id);
+            const isCritChoice = critNow.has(c.id);
+            const penalty      = atkNum >= 2 ? -10 : atkNum === 1 ? -5 : 0;
+            const attackLabel  = 'Attack ' + (atkNum + 1) + (penalty !== 0 ? ' (' + penalty + ')' : '');
 
             const attacksHtml = c.type === 'npc' && c.attacks && c.attacks.length > 0
                 ? '<div class="mb-2">'
                   + (!isAttacking
-                    ? '<button onclick="rollToHit(' + e.id + ',' + c.id + ')" style="width:100%;padding:10px;border-radius:10px;font-weight:700;font-size:13px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;cursor:pointer">' + rollBtnLabel + '</button>'
-                    : '<div class="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1">Choose Attack</div>'
+                    ? ('<div class="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1">' + attackLabel + '</div>'
+                      + '<div class="grid grid-cols-3 gap-1">'
+                      + '<button onclick="resolveAttackRoll(' + e.id + ',' + c.id + ',\'hit\')" style="padding:10px 4px;border-radius:8px;font-weight:700;font-size:12px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);color:#86efac;cursor:pointer">✅ Hit</button>'
+                      + '<button onclick="resolveAttackRoll(' + e.id + ',' + c.id + ',\'crit\')" style="padding:10px 4px;border-radius:8px;font-weight:700;font-size:12px;background:rgba(234,179,8,0.18);border:1px solid rgba(234,179,8,0.5);color:#fde047;cursor:pointer">💥 Crit</button>'
+                      + '<button onclick="resolveAttackRoll(' + e.id + ',' + c.id + ',\'miss\')" style="padding:10px 4px;border-radius:8px;font-weight:700;font-size:12px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;cursor:pointer">❌ Miss</button>'
+                      + '</div>')
+                    : ('<div class="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1">' + (isCritChoice ? '💥 Critical — Choose Attack (x2 dmg)' : 'Choose Attack') + '</div>'
                       + '<div class="space-y-1">'
                       + c.attacks.map((atk, idx) => {
                           const typeEmoji = {slashing:'⚔',piercing:'🗡',bludgeoning:'🔨',fire:'🔥',cold:'❄',lightning:'⚡',poison:'☠',acid:'🧪',necrotic:'💀',radiant:'✨',psychic:'🧠',force:'💥',thunder:'🌩'}[atk.damageType] || '⚔';
@@ -1470,7 +1476,7 @@
                               : ('<select onchange="if(this.value){tickRecharge(' + e.id + ',' + c.id + ',' + idx + ',parseInt(this.value));this.selectedIndex=0;}" style="min-width:52px;padding:5px 4px;border-radius:8px;font-size:12px;background:#111827;border:1px solid #374151;color:#9ca3af;cursor:pointer"><option value="">CD</option><option value="1">1 rd</option><option value="2">2 rds</option><option value="3">3 rds</option><option value="4">4 rds</option><option value="5">5 rds</option><option value="6">6 rds</option></select>');
                           return '<div class="flex gap-2 items-center mb-1">' + atkBtn + rechargePill + '</div>';
                       }).join('')
-                      + '</div>')
+                      + '</div>'))
                   + '</div>'
                 : (c.type === 'npc' ? '<div class="text-gray-600 text-xs mb-2">No attacks defined</div>' : '');
 
