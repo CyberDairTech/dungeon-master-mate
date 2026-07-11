@@ -409,6 +409,7 @@
         const rolledNow       = new Set(); // combatant has rolled the d20 and is picking Hit/Crit/Miss
         const turnAttackCount  = {};        // { cId: n } TOTAL actions used this turn (move+attack+miss+crit), capped at 3
         const turnAttackNumber = {};        // { cId: n } number of ATTACK ROLLS only — drives the -5/-10 penalty
+        const moveStatus       = {};        // { cId: string } inline status line shown under the card header
         let expandedEncounters = new Set();
         let editingEncounterName = new Set();
         let editingInit    = new Set();
@@ -1066,7 +1067,8 @@
 
             // Hard cap — cannot act a 4th time this turn
             if (totalActions >= MAX_ATTACKS_PER_TURN) {
-                alert(c.name + ' has already used ' + MAX_ATTACKS_PER_TURN + ' actions this turn. End the turn before acting again.');
+                moveStatus[cId] = '🚫 ' + MAX_ATTACKS_PER_TURN + ' actions already used this turn — end turn before acting again';
+                renderEncounters();
                 return;
             }
 
@@ -1091,6 +1093,10 @@
 
             rollBanners[cId] = { d20, bonus, total, isCrit, isFumble, atkNum };
 
+            // Show the attack number/penalty on the inline status line
+            const attackLabel = 'Attack ' + (atkNum + 1) + (penalty !== 0 ? ' (' + penalty + ')' : '');
+            moveStatus[cId] = '🎲 Rolling — ' + attackLabel;
+
             // Mark this combatant as having rolled — reveals the banner + Hit/Crit/Miss buttons
             rolledNow.add(cId);
             renderEncounters();
@@ -1104,12 +1110,13 @@
 
             const atkNum = turnAttackCount[cId] || 0;
             if (atkNum >= MAX_ATTACKS_PER_TURN) {
-                alert(c.name + ' has already used ' + MAX_ATTACKS_PER_TURN + ' actions this turn. End the turn before acting again.');
+                moveStatus[cId] = '🚫 ' + MAX_ATTACKS_PER_TURN + ' actions already used this turn — end turn before acting again';
+                renderEncounters();
                 return;
             }
 
             turnAttackCount[cId] = atkNum + 1;
-            showToast('🏃 ' + c.name + ' moved (Action ' + (atkNum + 1) + '/' + MAX_ATTACKS_PER_TURN + ')');
+            moveStatus[cId] = '🏃 Moved — Action ' + (atkNum + 1) + '/' + MAX_ATTACKS_PER_TURN + ' used';
             save(); renderEncounters();
         }
 
@@ -1123,13 +1130,14 @@
             // Always increment BOTH counters, regardless of outcome:
             // - turnAttackCount: total actions this turn (drives the 3-action cap)
             // - turnAttackNumber: attack rolls specifically (drives the -5/-10 penalty)
-            turnAttackCount[cId]  = (turnAttackCount[cId] || 0) + 1;
+            const actionNum = (turnAttackCount[cId] || 0) + 1;
+            turnAttackCount[cId]  = actionNum;
             turnAttackNumber[cId] = (turnAttackNumber[cId] || 0) + 1;
             rolledNow.delete(cId);
             delete rollBanners[cId];
 
             if (outcome === 'miss') {
-                showToast('❌ ' + c.name + ' missed');
+                moveStatus[cId] = '❌ Missed — Action ' + actionNum + '/' + MAX_ATTACKS_PER_TURN + ' used';
                 attackingNow.delete(cId);
                 critNow.delete(cId);
                 renderEncounters();
@@ -1137,6 +1145,7 @@
             }
 
             // Hit or Crit — reveal the attack list
+            moveStatus[cId] = (outcome === 'crit' ? '💥 Critical hit! ' : '✅ Hit! ') + 'Choose an attack — Action ' + actionNum + '/' + MAX_ATTACKS_PER_TURN;
             attackingNow.add(cId);
             if (outcome === 'crit') critNow.add(cId); else critNow.delete(cId);
             renderEncounters();
@@ -1178,6 +1187,9 @@
 
             const diceLabel = atk.count + 'd' + atk.die + (atk.bonus ? '+' + atk.bonus : '') + ' ' + atk.damageType + (isCrit ? ' (CRIT x2)' : '');
             dmgBanners[cId] = { atkName: atk.name, total, diceLabel, damageType: atk.damageType, isCrit };
+
+            const actionsUsed = turnAttackCount[cId] || 0;
+            moveStatus[cId] = (isCrit ? '💥 ' : '⚔ ') + atk.name + ' hit for ' + total + ' — Action ' + actionsUsed + '/' + MAX_ATTACKS_PER_TURN + ' used';
 
             save(); renderEncounters();
         }
@@ -1223,7 +1235,7 @@
             delete dmgBanners[cId];
             turnAttackCount[cId] = 0;
             turnAttackNumber[cId] = 0;
-
+            delete moveStatus[cId];
             save();
             renderEncounters();
 
@@ -1877,7 +1889,7 @@
                       }).join('')
                       + '</div>')
                     : (!hasRolled
-                      ? ('<button class="atk-roll-btn" data-eid="' + e.id + '" data-cid="' + c.id + '" data-capped="' + (capped ? '1' : '0') + '" style="width:100%;padding:10px;border-radius:10px;font-weight:700;font-size:13px;background:' + (capped ? 'rgba(107,114,128,0.15);border:1px solid rgba(107,114,128,0.3);color:#9ca3af' : 'rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc') + ';cursor:pointer">' + (capped ? '🚫 Turn Complete (3/3 Attacks Used)' : '🎲 Roll to Hit — ' + attackLabel) + '</button>')
+                      ? ('<button class="atk-roll-btn" data-eid="' + e.id + '" data-cid="' + c.id + '" data-capped="' + (capped ? '1' : '0') + '" style="width:100%;padding:10px;border-radius:10px;font-weight:700;font-size:13px;background:' + (capped ? 'rgba(107,114,128,0.15);border:1px solid rgba(107,114,128,0.3);color:#9ca3af' : 'rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc') + ';cursor:pointer">' + (capped ? '🚫 Turn Complete' : '🎲 Roll to Hit') + '</button>')
                       : (function() {
                           const rb = rollBanners[c.id];
                           if (!rb) return '';
@@ -1919,6 +1931,7 @@
                       + '</div>'
                     : '')
                 + '</div>'
+                + (moveStatus[c.id] ? '<div style="font-size:11px;color:#7dd3fc;margin-bottom:6px">' + moveStatus[c.id] + '</div>' : '')
                 + statLine
                 + hpHtml
                 + dmgBannerHtml
