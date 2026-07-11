@@ -403,7 +403,8 @@
         const attackingNow    = new Set(); // combatant confirmed a hit, picking attack
         const critNow         = new Set(); // combatant's pending attack choice is a critical hit
         const rolledNow       = new Set(); // combatant has rolled the d20 and is picking Hit/Crit/Miss
-        const turnAttackCount = {};         // { cId: n } attacks used this turn, resets on Start Turn
+        const turnAttackCount  = {};        // { cId: n } TOTAL actions used this turn (move+attack+miss+crit), capped at 3
+        const turnAttackNumber = {};        // { cId: n } number of ATTACK ROLLS only — drives the -5/-10 penalty
         let expandedEncounters = new Set();
         let editingEncounterName = new Set();
         let editingInit    = new Set();
@@ -1057,14 +1058,17 @@
             const c = encounters[eIdx].combatants.find(co => co.id === cId);
             if (!c) return;
 
-            const atkNum = turnAttackCount[cId] || 0; // 0-based count of attacks already used
+            const totalActions = turnAttackCount[cId] || 0; // total actions used (move + attack + ...)
 
-            // Hard cap — cannot roll a 4th attack this turn
-            if (atkNum >= MAX_ATTACKS_PER_TURN) {
-                alert(c.name + ' has already used ' + MAX_ATTACKS_PER_TURN + ' attacks this turn. End the turn before attacking again.');
+            // Hard cap — cannot act a 4th time this turn
+            if (totalActions >= MAX_ATTACKS_PER_TURN) {
+                alert(c.name + ' has already used ' + MAX_ATTACKS_PER_TURN + ' actions this turn. End the turn before acting again.');
                 return;
             }
 
+            // Penalty is based on how many ATTACK ROLLS have happened this turn,
+            // not how many total actions (a Move doesn't add to the attack penalty)
+            const atkNum  = turnAttackNumber[cId] || 0; // 0-based count of attacks already rolled
             const penalty = atkNum >= 2 ? -10 : atkNum === 1 ? -5 : 0;
 
             if (!c.rechargeCounters) c.rechargeCounters = {};
@@ -1112,8 +1116,11 @@
             const c = encounters[eIdx].combatants.find(co => co.id === cId);
             if (!c) return;
 
-            // Always increment the turn counter, regardless of outcome
-            turnAttackCount[cId] = (turnAttackCount[cId] || 0) + 1;
+            // Always increment BOTH counters, regardless of outcome:
+            // - turnAttackCount: total actions this turn (drives the 3-action cap)
+            // - turnAttackNumber: attack rolls specifically (drives the -5/-10 penalty)
+            turnAttackCount[cId]  = (turnAttackCount[cId] || 0) + 1;
+            turnAttackNumber[cId] = (turnAttackNumber[cId] || 0) + 1;
             rolledNow.delete(cId);
             delete rollBanners[cId];
 
@@ -1211,6 +1218,7 @@
             delete rollBanners[cId];
             delete dmgBanners[cId];
             turnAttackCount[cId] = 0;
+            turnAttackNumber[cId] = 0;
 
             save();
             renderEncounters();
@@ -1412,15 +1420,31 @@
             if (!e || e.combatants.length === 0) return;
             ensureTurnState(e);
             const byInit = [...e.combatants].sort((a, b) => b.init - a.init);
-            e.activeTurnId = byInit[0].id;
-            e.actedIds     = [];
-            e.roundNumber  = 1;
+
+            e.actedIds    = [];
+            e.roundNumber = 1;
+
+            // Skip any dead NPCs sitting at the top of initiative
+            let firstLiving = byInit.find(c => !isSkippable(c));
+            if (!firstLiving) {
+                showToast('⚔ No living combatants to start a round with');
+                return;
+            }
+            byInit.forEach(c => { if (isSkippable(c) && c.init > firstLiving.init) e.actedIds.push(c.id); });
+
+            e.activeTurnId = firstLiving.id;
             save(); renderEncounters();
-            showToast('🔄 Round 1 begins — ' + byInit[0].name + "'s turn");
+            showToast('🔄 Round 1 begins — ' + firstLiving.name + "'s turn");
         }
 
         // Advance from the current active combatant to the next one in initiative order.
         // Wraps to a new round when everyone has gone.
+        // A combatant is "dead" (skippable) only if they're an NPC at 0 HP.
+        // Players always get their turn regardless of any HP tracking.
+        function isSkippable(c) {
+            return c.type === 'npc' && c.hp === 0;
+        }
+
         function advanceTurn(eId, finishedId) {
             const e = encounters.find(en => en.id === eId);
             if (!e) return;
@@ -1428,24 +1452,44 @@
 
             if (!e.actedIds.includes(finishedId)) e.actedIds.push(finishedId);
 
-            const byInit  = [...e.combatants].sort((a, b) => b.init - a.init);
-            const remaining = byInit.filter(c => !e.actedIds.includes(c.id));
+            const byInit = [...e.combatants].sort((a, b) => b.init - a.init);
+            let skippedNames = [];
 
-            if (remaining.length > 0) {
-                e.activeTurnId = remaining[0].id;
+            // Keep advancing through the initiative order, auto-marking any
+            // dead NPCs as acted and skipping straight past them.
+            let guard = 0; // safety cap to avoid any infinite loop
+            while (guard++ < byInit.length + 1) {
+                const remaining = byInit.filter(c => !e.actedIds.includes(c.id));
+
+                if (remaining.length === 0) {
+                    // Everyone has acted — start a new round
+                    e.roundNumber += 1;
+                    e.actedIds     = [];
+                    continue; // re-evaluate with the fresh round
+                }
+
+                const next = remaining[0];
+                if (isSkippable(next)) {
+                    e.actedIds.push(next.id);
+                    skippedNames.push(next.name);
+                    continue;
+                }
+
+                e.activeTurnId = next.id;
                 save(); renderEncounters();
-                showToast('▶ ' + remaining[0].name + "'s turn (Round " + e.roundNumber + ')');
-            } else {
-                // Everyone has acted — start a new round
-                e.roundNumber += 1;
-                e.actedIds     = [];
-                e.activeTurnId = byInit[0].id;
-                save(); renderEncounters();
-                showToast('🔄 Round ' + e.roundNumber + ' begins — ' + byInit[0].name + "'s turn");
+
+                const skipNote = skippedNames.length > 0 ? ' (skipped ' + skippedNames.join(', ') + ' — defeated)' : '';
+                showToast('▶ ' + next.name + "'s turn (Round " + e.roundNumber + ')' + skipNote);
+
+                const el = document.getElementById('enc-' + eId);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                return;
             }
 
-            const el = document.getElementById('enc-' + eId);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // Fallback: everyone is dead/skippable — clear active turn
+            e.activeTurnId = null;
+            save(); renderEncounters();
+            showToast('⚔ No combatants left able to act');
         }
 
         // ── Encounters ───────────────────────────────────────────────────
@@ -1657,7 +1701,41 @@
 
         function renderEncounterBody(e, sorted) {
             ensureTurnState(e);
+            ensureScaleState(e);
             const playerOpts = players.map(p => '<option value="' + p.name.replace(/"/g, '&quot;') + '">' + p.name + '</option>').join('');
+
+            // ── Scale Rating panel ──────────────────────────────────────
+            const diff = computeEncounterDifficulty(e);
+            const scalePanel = '<details style="background:#111827;border:1px solid #374151;border-radius:10px;margin-bottom:12px">'
+                + '<summary style="padding:8px 12px;font-size:12px;font-weight:700;color:#9ca3af;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center">'
+                + '<span>⚖️ Scale Rating</span>'
+                + '<span style="color:' + diff.color + ';font-weight:800;background:rgba(255,255,255,0.06);padding:2px 10px;border-radius:6px">' + diff.label + '</span>'
+                + '</summary>'
+                + '<div style="padding:10px 12px;border-top:1px solid #374151">'
+                  + '<div style="display:flex;gap:8px;margin-bottom:8px">'
+                    + '<div style="flex:1">'
+                      + '<label style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">Party Size</label>'
+                      + '<input type="number" min="1" max="10" value="' + e.scale.partySize + '" onchange="setEncounterScale(' + e.id + ',\'partySize\',this.value)" style="width:100%;background:#1f2937;border:1px solid #374151;border-radius:6px;padding:5px;color:#e5e7eb;font-size:13px">'
+                    + '</div>'
+                    + '<div style="flex:1">'
+                      + '<label style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">Party Level</label>'
+                      + '<input type="number" min="1" max="20" value="' + e.scale.partyLevel + '" onchange="setEncounterScale(' + e.id + ',\'partyLevel\',this.value)" style="width:100%;background:#1f2937;border:1px solid #374151;border-radius:6px;padding:5px;color:#e5e7eb;font-size:13px">'
+                    + '</div>'
+                  + '</div>'
+                  + '<div style="font-size:11px;color:#9ca3af;margin-bottom:10px;line-height:1.5">'
+                    + 'Adjusted XP: <strong style="color:#e5e7eb">' + diff.adjXP.toLocaleString() + '</strong>'
+                    + ' (' + diff.totalXP.toLocaleString() + ' base × ' + diff.mult + ' for ' + diff.monsterCount + ' monster' + (diff.monsterCount === 1 ? '' : 's') + ')<br>'
+                    + 'Thresholds — Easy ' + diff.partyEasy.toLocaleString() + ' · Medium ' + diff.partyMedium.toLocaleString() + ' · Hard ' + diff.partyHard.toLocaleString() + ' · Deadly ' + diff.partyDeadly.toLocaleString()
+                  + '</div>'
+                  + '<div style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700;margin-bottom:5px">Quick Adjust (scales all NPC HP &amp; damage)</div>'
+                  + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px">'
+                    + '<button onclick="scaleEncounterPower(' + e.id + ',-25)" style="padding:7px 2px;border-radius:7px;font-size:11px;font-weight:700;background:rgba(96,165,250,0.12);border:1px solid rgba(96,165,250,0.3);color:#93c5fd">-25%</button>'
+                    + '<button onclick="scaleEncounterPower(' + e.id + ',-10)" style="padding:7px 2px;border-radius:7px;font-size:11px;font-weight:700;background:rgba(96,165,250,0.12);border:1px solid rgba(96,165,250,0.3);color:#93c5fd">-10%</button>'
+                    + '<button onclick="scaleEncounterPower(' + e.id + ',10)" style="padding:7px 2px;border-radius:7px;font-size:11px;font-weight:700;background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.3);color:#fca5a5">+10%</button>'
+                    + '<button onclick="scaleEncounterPower(' + e.id + ',25)" style="padding:7px 2px;border-radius:7px;font-size:11px;font-weight:700;background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.3);color:#fca5a5">+25%</button>'
+                  + '</div>'
+                + '</div>'
+              + '</details>';
 
             const turnBar = e.combatants.length === 0 ? '' :
                 (e.activeTurnId == null
@@ -1672,6 +1750,7 @@
                 + '<select onchange="if(this.value){addPlayerToEncounter(' + e.id + ',this.value);this.value=\'\';}" class="bg-gray-700 p-2 rounded text-xs flex-1">'
                 + '<option value="">+ Player</option>' + playerOpts + '</select>'
                 + '</div>'
+                + scalePanel
                 + turnBar
                 + '<div class="space-y-2">' + sorted.map(c => renderCombatant(e, c)).join('') + '</div>';
             return html;
@@ -1713,13 +1792,14 @@
 
             // Attacks (NPC only)
             // Turn state
-            const atkNum       = turnAttackCount[c.id] || 0;
+            const totalActions = turnAttackCount[c.id] || 0;  // total actions used (move + attack), drives 3-action cap
+            const atkNum       = turnAttackNumber[c.id] || 0;  // attack rolls only, drives -5/-10 penalty
             const hasRolled    = rolledNow.has(c.id);
             const isAttacking  = attackingNow.has(c.id);
             const isCritChoice = critNow.has(c.id);
             const penalty      = atkNum >= 2 ? -10 : atkNum === 1 ? -5 : 0;
             const attackLabel  = 'Attack ' + (atkNum + 1) + (penalty !== 0 ? ' (' + penalty + ')' : '');
-            const capped       = atkNum >= 3;
+            const capped       = totalActions >= MAX_ATTACKS_PER_TURN;
 
             // Damage roll banner (shown after picking an attack)
             const dmgB = dmgBanners[c.id];
