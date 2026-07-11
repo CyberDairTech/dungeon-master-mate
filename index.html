@@ -143,6 +143,7 @@
     <header class="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center sticky top-0 z-40"
             style="padding-top: max(0.75rem, env(safe-area-inset-top))">
         <span class="text-xl font-bold text-yellow-500 flex-1">⚔ DMM</span>
+        <span id="header-system-badge" class="text-xs font-bold mr-2" style="background:rgba(234,179,8,0.12);border:1px solid rgba(234,179,8,0.3);color:#fde047;padding:2px 8px;border-radius:6px"></span>
         <span id="header-page-title" class="text-gray-400 text-sm mr-3">Home</span>
     </header>
 
@@ -152,7 +153,15 @@
         <!-- HOME -->
         <div id="home" class="page active-page">
             <h2 class="text-2xl font-bold mb-2">⚔ DMM</h2>
-            <p class="text-gray-400 text-sm mb-6">Dungeon Master Mate — a mobile-first encounter tracker for tabletop RPGs.</p>
+            <p class="text-gray-400 text-sm mb-4">Dungeon Master Mate — a mobile-first encounter tracker for tabletop RPGs.</p>
+
+            <!-- Rule System Switcher -->
+            <div style="background:#111827;border:1px solid #374151;border-radius:12px;padding:12px;margin-bottom:20px">
+                <div style="font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:700;letter-spacing:0.03em;margin-bottom:8px">Rule System</div>
+                <div id="rule-system-toggle" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
+                <div style="font-size:11px;color:#6b7280;margin-top:8px">Each system keeps its own separate NPC library, ailments, players, and encounters — switching will not affect the other system's saved data.</div>
+            </div>
+
             <div class="space-y-3">
 
                 <section class="bg-gray-800 rounded border border-gray-700 overflow-hidden">
@@ -398,10 +407,38 @@
     <!-- ── App Script ── -->
     <script>
         // ── State ────────────────────────────────────────────────────────
-        let npcLibrary     = JSON.parse(localStorage.getItem('dmm_npcLibrary'))     || [];
-        let ailmentLibrary = JSON.parse(localStorage.getItem('dmm_ailmentLibrary')) || [];
-        let players        = JSON.parse(localStorage.getItem('dmm_players'))        || [];
-        let encounters     = JSON.parse(localStorage.getItem('dmm_encounters'))     || [];
+        // ── Rule System (Phase 1: toggle + fully namespaced storage) ────────
+        // 'dmm_activeSystem' is intentionally NOT namespaced — it's the pointer
+        // that decides which namespace everything else reads/writes from.
+        const RULE_SYSTEMS = {
+            '5e':  { label: 'D&D 5e',        shortLabel: '5e',  emoji: '🐉' },
+            'pf2': { label: 'Pathfinder 2e',  shortLabel: 'PF2', emoji: '🗡️' },
+        };
+        let activeSystem = localStorage.getItem('dmm_activeSystem') || '5e';
+        if (!RULE_SYSTEMS[activeSystem]) activeSystem = '5e'; // guard against corrupted/old values
+
+        // Builds a storage key namespaced to the currently active rule system.
+        // e.g. storageKey('npcLibrary') -> 'dmm_5e_npcLibrary' or 'dmm_pf2_npcLibrary'
+        function storageKey(base) {
+            return 'dmm_' + activeSystem + '_' + base;
+        }
+
+        // Switches the active rule system and reloads so every piece of in-memory
+        // state (npcLibrary, encounters, all the Set/Map turn-tracking state, etc.)
+        // re-initializes cleanly from the new namespace. This is the safest way
+        // to guarantee zero data bleed between systems — a live in-place swap
+        // would require re-deriving dozens of independent state variables and
+        // risks missing one.
+        function switchRuleSystem(sys) {
+            if (!RULE_SYSTEMS[sys] || sys === activeSystem) return;
+            localStorage.setItem('dmm_activeSystem', sys);
+            location.reload();
+        }
+
+        let npcLibrary     = JSON.parse(localStorage.getItem(storageKey('npcLibrary')))     || [];
+        let ailmentLibrary = JSON.parse(localStorage.getItem(storageKey('ailmentLibrary'))) || [];
+        let players        = JSON.parse(localStorage.getItem(storageKey('players')))        || [];
+        let encounters     = JSON.parse(localStorage.getItem(storageKey('encounters')))     || [];
         let pendingNPC     = null;
         const healingMode     = new Set(); // tracks which combatants are in healing mode
         const attackingNow    = new Set(); // combatant confirmed a hit, picking attack
@@ -417,19 +454,19 @@
 
         // ── Persistence ──────────────────────────────────────────────────
         function save() {
-            localStorage.setItem('dmm_npcLibrary',     JSON.stringify(npcLibrary));
-            localStorage.setItem('dmm_ailmentLibrary', JSON.stringify(ailmentLibrary));
-            localStorage.setItem('dmm_players',        JSON.stringify(players));
-            localStorage.setItem('dmm_encounters',     JSON.stringify(encounters));
+            localStorage.setItem(storageKey('npcLibrary'),     JSON.stringify(npcLibrary));
+            localStorage.setItem(storageKey('ailmentLibrary'), JSON.stringify(ailmentLibrary));
+            localStorage.setItem(storageKey('players'),        JSON.stringify(players));
+            localStorage.setItem(storageKey('encounters'),     JSON.stringify(encounters));
         }
 
         function exportData() {
-            const data = { npcLibrary, ailmentLibrary, players, encounters };
+            const data = { system: activeSystem, npcLibrary, ailmentLibrary, players, encounters };
             const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
             const url  = URL.createObjectURL(blob);
             const a    = document.createElement('a');
             a.href = url;
-            a.download = 'dmm_backup_' + new Date().toISOString().slice(0, 10) + '.json';
+            a.download = 'dmm_' + activeSystem + '_backup_' + new Date().toISOString().slice(0, 10) + '.json';
             a.click();
         }
 
@@ -437,7 +474,21 @@
             const file   = event.target.files[0];
             const reader = new FileReader();
             reader.onload = (e) => {
-                const data     = JSON.parse(e.target.result);
+                const data = JSON.parse(e.target.result);
+
+                // If the backup was made under a different rule system, warn before importing —
+                // 5e and PF2 data shapes are NOT interchangeable (different bestiary formats,
+                // different ailment/condition models coming in Phase 3).
+                if (data.system && data.system !== activeSystem) {
+                    const proceed = confirm(
+                        'This backup was made under ' + (RULE_SYSTEMS[data.system]?.label || data.system) +
+                        ', but you are currently on ' + RULE_SYSTEMS[activeSystem].label + '.\n\n' +
+                        'Importing it here may not work correctly. Switch to ' + (RULE_SYSTEMS[data.system]?.label || data.system) +
+                        ' first for a safe import.\n\nImport anyway?'
+                    );
+                    if (!proceed) return;
+                }
+
                 npcLibrary     = data.npcLibrary     || [];
                 ailmentLibrary = data.ailmentLibrary || [];
                 players        = data.players        || [];
@@ -451,7 +502,7 @@
         // Fetches all SRD monsters from Open5e and stores in localStorage.
         // Each NPC entry gets an `attacks` array: [{name, damageDice, bonus, damageType}]
         async function loadBestiary(force) {
-            const CACHE_KEY = 'dmm_bestiary_v7';
+            const CACHE_KEY = storageKey('bestiary_v7'); // namespaced per rule system
             const STATUS_EL = document.getElementById('bestiary-status');
 
             // Migration: wipe any pre-bestiary NPC data (old hand-typed entries with no attacks)
@@ -1970,7 +2021,41 @@
 
         if (ailmentLibrary.length === 0) { ailmentLibrary = DEFAULT_AILMENTS.map(a => ({...a})); save(); }
 
+        // ── Rule System Toggle Render ────────────────────────────────────
+        function renderRuleSystemToggle() {
+            const el = document.getElementById('rule-system-toggle');
+            if (!el) return;
+            el.innerHTML = Object.keys(RULE_SYSTEMS).map(key => {
+                const sys      = RULE_SYSTEMS[key];
+                const isActive = key === activeSystem;
+                const style = isActive
+                    ? 'background:rgba(234,179,8,0.15);border:2px solid rgba(234,179,8,0.6);color:#fde047'
+                    : 'background:#1f2937;border:2px solid #374151;color:#9ca3af';
+                return '<button onclick="' + (isActive ? '' : 'confirmSwitchRuleSystem(\'' + key + '\')') + '"'
+                    + ' style="' + style + ';padding:12px 8px;border-radius:10px;font-weight:800;font-size:13px;cursor:' + (isActive ? 'default' : 'pointer') + ';display:flex;flex-direction:column;align-items:center;gap:2px">'
+                    + '<span style="font-size:20px">' + sys.emoji + '</span>'
+                    + '<span>' + sys.label + '</span>'
+                    + (isActive ? '<span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;opacity:0.8">Active</span>' : '')
+                    + '</button>';
+            }).join('');
+        }
+
+        function confirmSwitchRuleSystem(sys) {
+            const target = RULE_SYSTEMS[sys];
+            if (!target) return;
+            const proceed = confirm(
+                'Switch to ' + target.label + '?\n\n' +
+                'This will reload the app. Your ' + RULE_SYSTEMS[activeSystem].label + ' data is saved separately and will be here when you switch back.'
+            );
+            if (proceed) switchRuleSystem(sys);
+        }
+
         // ── Boot ─────────────────────────────────────────────────────────
+        renderRuleSystemToggle();
+        (function() {
+            const badge = document.getElementById('header-system-badge');
+            if (badge) badge.textContent = RULE_SYSTEMS[activeSystem].emoji + ' ' + RULE_SYSTEMS[activeSystem].shortLabel;
+        })();
 
         // Delegated listener for attack buttons — avoids inline onclick with large IDs
         document.getElementById('encounter-list').addEventListener('click', function(evt) {
