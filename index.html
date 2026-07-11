@@ -1369,19 +1369,27 @@
             const factor = 1 + (pct / 100);
             e.combatants.forEach(c => {
                 if (c.type !== 'npc') return;
+
                 const newMax = Math.max(1, Math.round(c.maxHp * factor));
                 // Preserve current damage ratio when scaling max HP
                 const ratio = c.maxHp > 0 ? c.hp / c.maxHp : 1;
                 c.maxHp = newMax;
                 c.hp    = Math.max(c.hp === 0 ? 0 : 1, Math.round(newMax * ratio));
+
                 if (c.attacks) {
                     c.attacks.forEach(a => {
                         a.bonus = Math.round((a.bonus || 0) * factor);
                     });
                 }
+
+                // Track cumulative scale factor and scale XP to match, so the
+                // encounter XP total at the top always reflects current difficulty.
+                if (!c.baseXP) c.baseXP = c.xp || 0; // remember the un-scaled original XP once
+                c.scaleFactor = (c.scaleFactor || 1) * factor;
+                c.xp = Math.max(0, Math.round(c.baseXP * c.scaleFactor));
             });
             save(); renderEncounters();
-            showToast((pct > 0 ? '⬆ Scaled up ' : '⬇ Scaled down ') + Math.abs(pct) + '% — HP & damage adjusted');
+            showToast((pct > 0 ? '⬆ Scaled up ' : '⬇ Scaled down ') + Math.abs(pct) + '% — HP, damage & XP adjusted');
         }
 
         // ── Turn Order Tracking ─────────────────────────────────────────────
@@ -1613,7 +1621,30 @@
             if (e) { e.name = inputEl.value; editingEncounterName.delete(eId); save(); renderEncounters(); }
         }
 
+        // If the combatant currently holding the active turn has died since their
+        // turn began (killed by damage/ailments mid-turn, not just via End Turn),
+        // automatically complete their turn and advance to the next combatant.
+        function checkActiveTurnDeaths() {
+            let advanced = false;
+            encounters.forEach(e => {
+                ensureTurnState(e);
+                if (e.activeTurnId == null) return;
+                const active = e.combatants.find(c => c.id === e.activeTurnId);
+                if (active && isSkippable(active) && !e.actedIds.includes(active.id)) {
+                    showToast('💀 ' + active.name + ' died mid-turn — turn completed automatically');
+                    advanceTurn(e.id, active.id);
+                    advanced = true;
+                }
+            });
+            return advanced;
+        }
+
         function renderEncounters() {
+            // Auto-complete any turn whose active combatant has died since it began.
+            // advanceTurn() calls renderEncounters() itself, so bail out of this
+            // pass once it has handled the re-render to avoid double work.
+            if (checkActiveTurnDeaths()) return;
+
             document.getElementById('encounter-list').innerHTML = encounters.map(e => {
                 const sorted   = sortByTurnOrder(e);
                 const earnedXP = e.combatants.reduce((s, c) => s + (c.type === 'npc' && c.hp === 0 ? (c.xp || 0) : 0), 0);
