@@ -159,7 +159,7 @@
             <div style="background:#111827;border:1px solid #374151;border-radius:12px;padding:12px;margin-bottom:20px">
                 <div style="font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:700;letter-spacing:0.03em;margin-bottom:8px">Rule System</div>
                 <div id="rule-system-toggle" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
-                <div style="font-size:11px;color:#6b7280;margin-top:8px">Each system keeps its own separate NPC library, ailments, players, and encounters — switching will not affect the other system's saved data.</div>
+                <div style="font-size:11px;color:#6b7280;margin-top:8px">Each system keeps its own separate NPC library, ailments/conditions, players, and encounters — switching reloads the app and will not affect the other system's saved data.</div>
             </div>
 
             <div class="space-y-3">
@@ -169,10 +169,11 @@
                         ⚙️ Initial Setup <span>▼</span>
                     </button>
                     <div id="guide-setup" class="p-4 pt-2 text-gray-300 space-y-2 text-sm">
-                        <p><strong class="text-white">1. Players</strong> — Go to the Players tab and add each player character by name. They will appear in the + Player dropdown inside every encounter.</p>
-                        <p><strong class="text-white">2. NPC Library</strong> — Over 300 SRD monsters load automatically from the Open5e bestiary the first time you open the NPC tab. Each monster comes with its real stat block: HP, AC, Perception, CR, XP, attack bonus, and all of its attacks with damage dice, bonuses, and damage types. Tap 🔄 Refresh anytime to re-fetch. Use the search box to filter 300+ monsters instantly. Custom NPCs can be added manually — pick a CR and the app calculates HP, AC, and XP automatically using official Monster Manual averages.</p>
-                        <p><strong class="text-white">3. Ailment Library</strong> — Create reusable status effects with a name, duration in rounds, and damage dice (No Damage through 2d10). Default D&amp;D 5e conditions are pre-loaded on first launch.</p>
-                        <p><strong class="text-white">4. Settings</strong> — Export a full backup of your library to a JSON file and import it on any device to restore your data.</p>
+                        <p><strong class="text-white">0. Choose Your Rule System</strong> — At the top of this page, pick 🐉 D&amp;D 5e or 🗡️ Pathfinder 2e. Each system has completely independent data — NPCs, conditions, players, and encounters saved under one system are invisible to the other. Your current system is always shown as a badge in the top header bar.</p>
+                        <p><strong class="text-white">1. Players</strong> — Go to the Players tab and add each player character by name. They appear in the + Player dropdown inside every encounter.</p>
+                        <p><strong class="text-white">2. NPC Library</strong> — <u>D&amp;D 5e:</u> Over 300 SRD monsters load automatically from the Open5e bestiary the first time you open the NPC tab, each with a real stat block (HP, AC, Perception, CR, XP, attack bonus, and all attacks with dice/damage types). <u>Pathfinder 2e:</u> A small hand-verified set of common monsters (Goblin Warrior, Skeleton Guard, Wolf, Orc Warrior, Ogre) loads automatically — these stats were cross-checked against Archives of Nethys. An experimental 🧪 Try Live Fetch button (PF2 only) attempts to pull the full ~300-monster community Bestiary 1 from GitHub, but this parser hasn't been confirmed against live data yet, so verify stats before use; 🔄 Refresh always restores the safe verified set. Both systems let you build Custom NPCs manually — pick a level/CR and HP, AC, and XP are calculated automatically.</p>
+                        <p><strong class="text-white">3. Ailment / Condition Library</strong> — <u>5e:</u> Called "Ailment Library." Create status effects with a name, duration in rounds, and damage (No Damage through 2d10); default 5e conditions pre-load automatically. <u>PF2:</u> Called "Condition Library" instead, pre-loaded with real PF2 condition names (Frightened, Sickened, Enfeebled, Slowed, Persistent Bleed/Fire/Poison/Acid, Off-Guard, etc.). Note: real PF2 conditions use a decreasing numeric value and Persistent Damage normally ends via a save, not a fixed round count — this tool approximates that with the same round-based engine as 5e for now, which is called out on the Condition Library page itself.</p>
+                        <p><strong class="text-white">4. Settings</strong> — Export a full backup of your library to a JSON file (tagged with which rule system it came from) and import it on any device to restore your data. Importing a backup made under the other system triggers a warning first.</p>
                     </div>
                 </section>
 
@@ -181,19 +182,15 @@
                         ⚔️ Running an Encounter <span>▼</span>
                     </button>
                     <div id="guide-encounter" class="p-4 pt-2 text-gray-300 space-y-2 text-sm hidden">
-                        <p><strong class="text-white">Creating an Encounter</strong> — Tap + New Encounter on the Encounters tab. Use 🔍 + NPC to search and add monsters (added instantly with real bestiary stats and a d20 initiative roll), and + Player to add party members (enter their initiative manually, tap ✎ to edit).</p>
-                        <p><strong class="text-white">⚖️ Scale Rating</strong> — Every encounter has a collapsible Scale Rating panel showing a live difficulty badge (Trivial/Easy/Medium/Hard/Deadly) computed using the official DMG formula — total monster XP × the real encounter multiplier, compared against XP thresholds for your party's size and level. Set Party Size and Party Level, then use the -25% / -10% / +10% / +25% Quick Adjust buttons to scale every NPC's HP, attack damage, and XP up or down on the fly. Scaling compounds — repeated adjustments stack correctly, and the encounter's XP total header always reflects the current scaled value.</p>
-                        <p><strong class="text-white">🔄 Begin Round / Turn Cycling</strong> — Tap 🔄 Begin Round 1 to start the initiative cycle. The combatant whose turn it is gets a glowing gold border and a "CURRENT TURN" badge, and automatically sorts to the top of the list. A status bar shows the current round number and how many combatants have acted.</p>
-                        <p><strong class="text-white">▶ Start Turn</strong> — Resets that combatant's action count back to 3 fresh actions for the turn. Does not touch ailments or cooldowns.</p>
-                        <p><strong class="text-white">🏃 Move / 🎲 Roll to Hit</strong> — Each NPC card has a Move button (uses one action, no roll) and a Roll to Hit button showing the current attack number and any multi-attack penalty (Attack 1 → Attack 2 (-5) → Attack 3 (-10), capped at 3 total actions per turn). Move does NOT add to the attack penalty — only actual attack rolls do.</p>
-                        <p><strong class="text-white">Hit / Crit / Miss</strong> — Tapping Roll to Hit shows an inline banner with the d20 roll and modifier total, plus three buttons: ✅ Hit, 💥 Crit (doubles damage), and ❌ Miss. All three consume one attack normally. Choosing Hit or Crit reveals the attack list; picking an attack shows the damage result inline on the card with a Dismiss button.</p>
-                        <p><strong class="text-white">Hit Points</strong> — Colour-coded HP bar (green → yellow → red). Use -1 / -5 / -10 to apply damage, or toggle 🗡 Dmg / 💚 Heal to switch to +1 / +5 / +10 healing.</p>
-                        <p><strong class="text-white">Cooldowns (CD)</strong> — Each attack has a CD dropdown (1–6 rounds). Once set, it becomes a red ⏳ countdown that ticks down as the encounter progresses via End Turn.</p>
-                        <p><strong class="text-white">Ailments</strong> — Assign status effects from your library to any combatant. Multiple ailments can stack, each with an independent round counter.</p>
-                        <p><strong class="text-white">⏹ End Turn</strong> — Applies ailment damage, ticks down ailment rounds and cooldowns, then automatically advances to the next combatant in initiative order. If a combatant dies mid-turn from any cause, their turn auto-completes and skips to the next.</p>
-                        <p><strong class="text-white">Death, Skip &amp; Revive</strong> — At 0 HP, an NPC shows a DEAD overlay with a 💚 Revive (25% HP) button. Defeated NPCs are automatically skipped when it would be their turn in the cycle.</p>
-                        <p><strong class="text-white">Auto-Numbering</strong> — Adding multiple NPCs of the same type automatically numbers them ("Goblin 1", "Goblin 2"...) so they're easy to tell apart.</p>
-                        <p><strong class="text-white">XP Tracking</strong> — The encounter header shows earned XP vs total XP, turning green once every NPC is defeated. If the encounter has been scaled, this total reflects the scaled value.</p>
+                        <p><strong class="text-white">Creating an Encounter</strong> — Tap + New Encounter on the Encounters tab. Use 🔍 + NPC to search and add monsters instantly (real bestiary stats, d20 initiative roll, auto-numbered if duplicated — "Goblin 1", "Goblin 2"...), and + Player for party members (initiative entered manually, tap ✎ to edit).</p>
+                        <p><strong class="text-white">⚖️ Scale Rating</strong> — A collapsible panel with a live difficulty badge. <u>5e:</u> Easy/Medium/Hard/Deadly using the official DMG formula (monster XP × encounter multiplier vs. party-level thresholds). <u>PF2:</u> Low/Moderate/Severe/Extreme using PF2's real level-based XP budget system — each monster's XP depends on its level relative to your party (same level = 40 XP, +1 = 60, +2 = 80, +3 = 120, +4 or more = 160, clamped both directions), no separate multiplier step. Set Party Size and Party Level, then use -25% / -10% / +10% / +25% Quick Adjust to scale every NPC's HP, attack damage, and XP together — compounds correctly across repeated adjustments, and the encounter's XP header always reflects the current scaled total.</p>
+                        <p><strong class="text-white">🔄 Begin Round / Turn Cycling</strong> — Tap 🔄 Begin Round 1 to start the initiative cycle. The active combatant gets a glowing gold border and "CURRENT TURN" badge, and sorts to the top automatically. A status bar tracks the round number and how many combatants have acted. Defeated NPCs are skipped automatically — including if a combatant dies mid-turn from any cause, their turn auto-completes and moves on.</p>
+                        <p><strong class="text-white">▶ Start Turn / ⏹ End Turn</strong> — Two separate buttons. Start Turn (top of card) resets that combatant's action budget back to 3 fresh actions — nothing else. End Turn (bottom of card) applies ailment/condition damage, ticks down rounds and cooldowns, then advances to the next combatant in initiative order.</p>
+                        <p><strong class="text-white">🏃 Move / 🎲 Roll to Hit</strong> — Move consumes one action with no roll. Roll to Hit shows the d20 result and modifier, then reveals ✅ Hit / 💥 Crit (double damage) / ❌ Miss — all three consume an action. A second attack in the same turn applies a -5 penalty, a third applies -10 (capped at 3 actions total per turn); Move does NOT add to this penalty, only actual attack rolls do. All of this — move confirmations, roll results, hit/miss outcomes, and final damage — now displays as a single inline status line under the header buttons instead of popups, so the whole turn narrative reads in one place.</p>
+                        <p><strong class="text-white">Hit Points</strong> — Colour-coded HP bar (green → yellow → red). Use -1 / -5 / -10 to apply damage, or toggle 🗡 Dmg / 💚 Heal to flip the same buttons to +1 / +5 / +10 healing.</p>
+                        <p><strong class="text-white">Cooldowns (CD)</strong> — Each attack has a CD dropdown (1–6 rounds) that becomes a red ⏳ countdown once set, ticking down via End Turn.</p>
+                        <p><strong class="text-white">Death, Skip &amp; Revive</strong> — At 0 HP, an NPC shows a DEAD overlay with a 💚 Revive (25% HP) button.</p>
+                        <p><strong class="text-white">XP Tracking</strong> — The encounter header shows earned XP vs total XP (reflecting any scaling applied), turning green once every NPC is defeated.</p>
                     </div>
                 </section>
 
@@ -202,22 +199,24 @@
                         👹 NPC Library Details <span>▼</span>
                     </button>
                     <div id="guide-npc" class="p-4 pt-2 text-gray-300 space-y-2 text-sm hidden">
-                        <p><strong class="text-white">Bestiary</strong> — First visit to the NPC tab fetches all SRD monsters from Open5e and caches them locally; later visits load instantly. Tap 🔄 Refresh to force a re-fetch.</p>
-                        <p><strong class="text-white">Search</strong> — Filter all 300+ monsters by name in real time, showing CR and attack count per result.</p>
-                        <p><strong class="text-white">Custom NPCs</strong> — Build homebrew monsters with a name, CR, resistance, boss flag, and individual attacks (name, dice, bonus, damage type). HP, AC, Perception, and XP are derived from the chosen CR using Monster Manual averages.</p>
-                        <p><strong class="text-white">Recharge Attacks</strong> — Attacks with a Recharge value (e.g. Acid Breath Recharge 5–6) are parsed automatically; manage the actual cooldown countdown per-encounter with the CD dropdown.</p>
+                        <p><strong class="text-white">5e Bestiary</strong> — First visit fetches all SRD monsters from Open5e and caches them locally; later visits load instantly. Tap 🔄 Refresh to force a re-fetch.</p>
+                        <p><strong class="text-white">PF2 Bestiary</strong> — Loads a small hand-verified default set automatically (safe to use immediately). The 🧪 Try Live Fetch button is a separate, explicit, experimental action that attempts the full community Bestiary 1 — if it produces bad data, tap 🔄 Refresh to restore the verified defaults.</p>
+                        <p><strong class="text-white">Search</strong> — Filter your current system's monster list by name in real time, showing level/CR and attack count per result.</p>
+                        <p><strong class="text-white">Custom NPCs</strong> — Build homebrew monsters with a name, level/CR, resistance, boss flag, and individual attacks (name, dice, bonus, damage type). HP, AC, Perception, and XP are derived automatically from the chosen level/CR.</p>
+                        <p><strong class="text-white">Recharge Attacks (5e)</strong> — Attacks with a Recharge value (e.g. Acid Breath Recharge 5–6) are parsed automatically; manage the actual cooldown per-encounter with the CD dropdown.</p>
                     </div>
                 </section>
 
                 <section class="bg-gray-800 rounded border border-gray-700 overflow-hidden">
                     <button onclick="toggleSection('guide-ailments-detail')" class="w-full p-4 text-left font-bold text-yellow-500 flex justify-between items-center">
-                        🩸 Ailment Library Details <span>▼</span>
+                        🩸 Ailment / Condition Library Details <span>▼</span>
                     </button>
                     <div id="guide-ailments-detail" class="p-4 pt-2 text-gray-300 space-y-2 text-sm hidden">
-                        <p><strong class="text-white">Creating Ailments</strong> — Name, duration (1–3 rounds), and damage: No Damage, 1d4 through 1d12, or 2d4 through 2d10.</p>
-                        <p><strong class="text-white">Applying Ailments</strong> — Assign from any combatant card. Multiple ailments stack independently on the same target.</p>
-                        <p><strong class="text-white">End Turn Processing</strong> — Tapping ⏹ End Turn rolls each active ailment's damage, subtracts it from HP, and decrements its round counter, removing expired ones automatically.</p>
-                        <p><strong class="text-white">Defaults</strong> — All official 5e conditions (Blinded, Charmed, Frightened, Paralyzed, Stunned, etc.) plus common damaging effects (Poison, Bleeding, Frostbite, etc.) are pre-loaded on first launch.</p>
+                        <p><strong class="text-white">Creating Entries</strong> — Name, duration (1–3 rounds), and damage: No Damage, 1d4 through 1d12, or 2d4 through 2d10.</p>
+                        <p><strong class="text-white">Applying</strong> — Assign from any combatant card. Multiple can stack independently on the same target, each with its own round counter.</p>
+                        <p><strong class="text-white">End Turn Processing</strong> — Rolls each active entry's damage, subtracts it from HP, and decrements its round counter, removing expired ones automatically.</p>
+                        <p><strong class="text-white">5e Defaults</strong> — All official 5e conditions (Blinded, Charmed, Frightened, Paralyzed, Stunned, etc.) plus common damaging effects (Poison, Bleeding, Frostbite, etc.).</p>
+                        <p><strong class="text-white">PF2 Defaults</strong> — Real PF2 condition names: Frightened, Sickened, Enfeebled, Clumsy, Drained, Stupefied, Slowed, Stunned, Persistent Bleed/Fire/Poison/Acid, Off-Guard, and more. <strong class="text-yellow-400">Important:</strong> real PF2 conditions use a numeric value that decreases by 1 automatically each turn, and Persistent Damage normally ends via a DC 15 flat check rather than a fixed round count. This tool currently tracks PF2 conditions using the same round-based engine as 5e as a practical stand-in — a fully accurate value-based condition model is a future improvement.</p>
                     </div>
                 </section>
 
@@ -239,6 +238,7 @@
                             <li>Tap <strong>Add to Home screen</strong></li>
                             <li>Tap <strong>Add</strong></li>
                         </ol>
+                        <p class="text-xs text-gray-500 mt-3">If the app ever seems to be running an old version after an update, a hard refresh (or fully closing and reopening the installed app) will pull the latest version.</p>
                     </div>
                 </section>
 
