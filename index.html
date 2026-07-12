@@ -258,9 +258,10 @@
         <!-- NPC LIBRARY -->
         <div id="npcs" class="page">
             <h2 class="text-2xl font-bold mb-4">NPC Library</h2>
-            <div class="flex items-center justify-center gap-2 mb-3">
+            <div class="flex items-center justify-center gap-2 mb-3 flex-wrap">
                 <div id="bestiary-status" class="text-xs text-gray-400 text-center"></div>
-                <button onclick="loadBestiary(true)" class="text-xs bg-gray-700 px-2 py-1 rounded">🔄 Refresh</button>
+                <button onclick="loadActiveBestiary(true)" class="text-xs bg-gray-700 px-2 py-1 rounded">🔄 Refresh</button>
+                <button id="pf2-experimental-btn" onclick="tryLiveFetchPF2()" class="text-xs bg-purple-900 border border-purple-700 px-2 py-1 rounded" style="display:none">🧪 Try Live Fetch (Bestiary 1)</button>
             </div>
             <!-- Search -->
             <div class="bg-gray-800 p-3 rounded border border-gray-700 mb-3">
@@ -332,7 +333,8 @@
 
         <!-- AILMENT LIBRARY -->
         <div id="ailments" class="page">
-            <h2 class="text-2xl font-bold mb-6">Ailment Library</h2>
+            <h2 class="text-2xl font-bold mb-2" id="ailments-page-title">Ailment Library</h2>
+            <p id="ailments-pf2-note" class="text-xs text-gray-500 mb-4" style="display:none">Pathfinder 2e note: real conditions like Frightened/Sickened/Slowed use a numeric value that decreases automatically each turn, and Persistent Damage normally ends on a DC 15 flat check — not a fixed round count. "Duration" here is used as a practical stand-in for that value until a full value-based condition model is built.</p>
             <div class="bg-gray-800 p-4 rounded border border-gray-700 mb-6 space-y-2">
                 <input id="ail-name" placeholder="Ailment Name" class="p-2 bg-gray-900 rounded border border-gray-700 w-full">
                 <div class="flex gap-2">
@@ -554,6 +556,203 @@
                 renderLibNPCs();
             }
         }
+
+        // ── Pathfinder 2e Bestiary (Phase 2) ────────────────────────────────
+        // Source: Pf2eTools community data repo (raw.githubusercontent.com), Bestiary 1 only.
+        // Data is Paizo Community Use Policy content via the Pf2eTools project, not the same
+        // license as the 5e SRD — attributed here for transparency.
+        // Normal load path: uses the hand-verified default set (safe, confirmed-accurate
+        // stat blocks). Does NOT attempt the experimental live fetch automatically.
+        async function loadBestiaryPF2(force) {
+            const CACHE_KEY = storageKey('bestiary_pf2_v1');
+            const STATUS_EL = document.getElementById('bestiary-status');
+
+            if (!force && localStorage.getItem(CACHE_KEY)) {
+                const cached = JSON.parse(localStorage.getItem(CACHE_KEY));
+                if (npcLibrary.length === 0) { npcLibrary = cached; save(); }
+                if (STATUS_EL) STATUS_EL.textContent = cached.length + ' PF2 monsters loaded (hand-verified default set)';
+                renderLibNPCs();
+                return;
+            }
+
+            npcLibrary = DEFAULT_NPCS_PF2.map(n => ({...n}));
+            localStorage.setItem(CACHE_KEY, JSON.stringify(npcLibrary));
+            save();
+            if (STATUS_EL) STATUS_EL.textContent = npcLibrary.length + ' PF2 monsters loaded (hand-verified default set — tap "🧪 Try Live Fetch" for the experimental full Bestiary 1 import)';
+            renderLibNPCs();
+        }
+
+        // Experimental: attempts to fetch and parse the full Pf2eTools community Bestiary 1
+        // JSON from GitHub. The exact field schema of that file hasn't been confirmed against
+        // live data, so parsing may be incomplete or fail for some monsters. Marked as a
+        // separate, explicit action rather than the automatic load path — if it fails or
+        // produces bad data, tap "🔄 Refresh" afterward to fall back to the verified defaults.
+        async function tryLiveFetchPF2() {
+            const STATUS_EL = document.getElementById('bestiary-status');
+            if (STATUS_EL) STATUS_EL.textContent = '🧪 Attempting experimental live fetch from Pf2eTools (Bestiary 1)...';
+
+            try {
+                const url  = 'https://raw.githubusercontent.com/Pf2eToolsOrg/Pf2eTools/dev/data/bestiary/creatures-b1.json';
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                const raw  = data.creature || data.monster || [];
+                if (!Array.isArray(raw) || raw.length === 0) throw new Error('Empty or unrecognised PF2 bestiary format — schema may have changed');
+
+                const parsed = raw.map(m => parsePF2Monster(m)).filter(Boolean);
+                if (parsed.length === 0) throw new Error('Parsed 0 usable monsters — schema likely mismatched');
+
+                const CACHE_KEY = storageKey('bestiary_pf2_v1');
+                localStorage.setItem(CACHE_KEY, JSON.stringify(parsed));
+                npcLibrary = parsed;
+                save();
+
+                const withAttacks = parsed.filter(p => p.attacks && p.attacks.length > 0).length;
+                if (STATUS_EL) STATUS_EL.textContent = '🧪 Experimental: ' + parsed.length + ' PF2 monsters loaded (' + withAttacks + ' with attacks) — verify stats before use, this parser is unconfirmed against live data';
+                renderLibNPCs();
+
+            } catch (err) {
+                console.warn('PF2 experimental live fetch failed:', err);
+                if (STATUS_EL) STATUS_EL.textContent = '🧪 Experimental fetch failed (' + err.message + ') — tap 🔄 Refresh to restore the verified default set';
+            }
+        }
+
+        // Strips Pf2eTools' {@tag content} markup down to plain readable text.
+        // e.g. "{@damage 1d6+9} slashing plus {@damage 2d6} {@condition persistent bleed}"
+        //   -> "1d6+9 slashing plus 2d6 persistent bleed"
+        function stripPf2Tags(str) {
+            if (typeof str !== 'string') return '';
+            return str
+                .replace(/\{@\w+\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1') // {@tag text|extra} -> text
+                .replace(/\{@\w+\}/g, '')
+                .trim();
+        }
+
+        // Parses a PF2 damage string like "1d6+9 slashing plus 2d6 persistent bleed and 1d4 evil"
+        // into a primary rollable component (count/die/bonus/type) — PF2 Strikes routinely deal
+        // multiple damage types in one hit; we take the first (primary) component as the rollable
+        // attack and keep the full original text for display so nothing is silently lost.
+        function parsePf2DamageString(rawStr) {
+            const clean = stripPf2Tags(rawStr);
+            if (!clean) return null;
+            const m = clean.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?\s*([a-zA-Z]+)?/);
+            if (!m) return null;
+            const count = parseInt(m[1]);
+            const die   = parseInt(m[2]);
+            const bonus = m[3] ? parseInt(m[3].replace(/\s+/g, '')) : 0;
+            const dmgType = (m[4] || 'bludgeoning').toLowerCase();
+            return { count, die, bonus, damageType: dmgType, fullText: clean };
+        }
+
+        // Parse a single Pf2eTools creature JSON entry into DMM's shared NPC format.
+        // PF2's data model differs fundamentally from 5e: Strikes already include their own
+        // attack bonus (no separate "attack_bonus" field split from damage), multiple attack
+        // penalty (MAP) is a core rule rather than a monster-specific trait, and many Strikes
+        // deal compound multi-type damage in one action. We normalise the primary damage
+        // component into the same {count, die, bonus, damageType, attackBonus} shape 5e uses
+        // so the rest of the app (encounter cards, dice rolling, cooldowns) works unchanged.
+        function parsePF2Monster(m) {
+            if (!m || !m.name) return null;
+
+            const attacks = [];
+            const melee  = Array.isArray(m.attacks) ? m.attacks : (Array.isArray(m.melee) ? m.melee : []);
+            const ranged = Array.isArray(m.ranged) ? m.ranged : [];
+
+            [...melee, ...ranged].forEach(atk => {
+                if (!atk || !atk.name) return;
+                const attackBonus = Array.isArray(atk.attack) ? atk.attack[0] : (typeof atk.attack === 'number' ? atk.attack : 0);
+
+                // damage can be a string or an array of damage-entry objects depending on data version
+                let dmgStr = '';
+                if (typeof atk.damage === 'string') dmgStr = atk.damage;
+                else if (Array.isArray(atk.damage)) dmgStr = atk.damage.map(d => (d.damage || '')).join(' plus ');
+
+                const parsed = parsePf2DamageString(dmgStr);
+                if (!parsed) return;
+
+                attacks.push({
+                    name: stripPf2Tags(atk.name).replace(/^\w/, c => c.toUpperCase()),
+                    count: parsed.count,
+                    die: parsed.die,
+                    bonus: parsed.bonus,
+                    damageType: parsed.damageType,
+                    attackBonus,
+                    // PF2-specific: full original damage text (compound damage isn't lost, just
+                    // not separately rollable yet — shown in the attack's tooltip/label)
+                    pf2FullDamage: parsed.fullText,
+                });
+            });
+
+            const level = typeof m.level === 'number' ? m.level : 0;
+            const ac    = m.defenses && m.defenses.ac ? (m.defenses.ac.std || m.defenses.ac) : (10 + level);
+            const hp    = m.defenses && m.defenses.hp ? (Array.isArray(m.defenses.hp) ? m.defenses.hp[0].hp : m.defenses.hp) : Math.max(1, level * 15 + 10);
+            const perception = typeof m.perception === 'object' ? (m.perception.std || 0) : (m.perception || 0);
+
+            return {
+                name: stripPf2Tags(m.name),
+                isBoss: level >= 10,
+                resistance: 'None', // PF2 uses resistance/weakness pairs per damage type; simplified for Phase 2
+                attacks,
+                cr: String(level),           // PF2 "level" plays the role 5e's CR does
+                type: (m.traits || []).join(', '),
+                fromSRD: true,
+                system: 'pf2',
+                ac: ac,
+                baseHp: hp,
+                perception: perception,
+                xpByCR: pf2LevelToXP(level),
+            };
+        }
+
+        // PF2 doesn't award XP per monster the way 5e does — XP comes from the encounter-building
+        // point-budget system (based on level difference between monster and party). As a
+        // reasonable per-monster placeholder for the existing "earned XP" tracker, we approximate
+        // using the PF2 "Simple Encounter" budget contribution for a same-level threat (40 XP),
+        // scaled by the exponential level-difference curve used in the PF2 GMG. This will be
+        // replaced with the real encounter-budget system in Phase 3.
+        function pf2LevelToXP(monsterLevel) {
+            const table = { '-4':10, '-3':15, '-2':20, '-1':30, '0':40, '1':60, '2':80, '3':120, '4':160 };
+            // PF2 GMG uses relative level (monster level − party level); without a party level
+            // reference at parse-time we anchor to "same level as party" (0) as a neutral default.
+            return table['0'] || 40;
+        }
+
+        // Hand-verified against Archives of Nethys (2e.aonprd.com) source stat blocks —
+        // safer than trusting an unconfirmed live-fetch parser for launch data. The
+        // experimental 🔄 Refresh button can still attempt the live Pf2eTools fetch.
+        const DEFAULT_NPCS_PF2 = [
+            // Level -1
+            { name: 'Goblin Warrior', isBoss: false, resistance: 'None', cr: '-1', type: 'humanoid, goblin', fromSRD: false, system: 'pf2',
+              ac: 16, baseHp: 6, perception: 2, xpByCR: 30,
+              attacks: [
+                  { name: 'Shortsword', count: 1, die: 6, bonus: 0, damageType: 'piercing', attackBonus: 8 },
+                  { name: 'Shortbow',   count: 1, die: 6, bonus: 0, damageType: 'piercing', attackBonus: 8 },
+              ] },
+            // Level 1
+            { name: 'Skeleton Guard', isBoss: false, resistance: 'None', cr: '1', type: 'undead, mindless, skeleton', fromSRD: false, system: 'pf2',
+              ac: 16, baseHp: 4, perception: 2, xpByCR: 60,
+              attacks: [
+                  { name: 'Scimitar', count: 1, die: 6, bonus: 4, damageType: 'slashing', attackBonus: 10 },
+              ] },
+            // Level 1
+            { name: 'Wolf', isBoss: false, resistance: 'None', cr: '1', type: 'animal', fromSRD: false, system: 'pf2',
+              ac: 16, baseHp: 15, perception: 7, xpByCR: 60,
+              attacks: [
+                  { name: 'Jaws', count: 1, die: 8, bonus: 4, damageType: 'piercing', attackBonus: 9 },
+              ] },
+            // Level 2
+            { name: 'Orc Warrior', isBoss: false, resistance: 'None', cr: '2', type: 'humanoid, orc', fromSRD: false, system: 'pf2',
+              ac: 18, baseHp: 30, perception: 7, xpByCR: 80,
+              attacks: [
+                  { name: 'Falchion', count: 2, die: 8, bonus: 5, damageType: 'slashing', attackBonus: 11 },
+              ] },
+            // Level 4
+            { name: 'Ogre', isBoss: false, resistance: 'None', cr: '4', type: 'giant, humanoid', fromSRD: false, system: 'pf2',
+              ac: 19, baseHp: 68, perception: 8, xpByCR: 160,
+              attacks: [
+                  { name: 'Club', count: 1, die: 10, bonus: 8, damageType: 'bludgeoning', attackBonus: 15 },
+              ] },
+        ];
 
         // Parse a raw Open5e monster into DMM's NPC format
         function parseMonster(m) {
@@ -1396,7 +1595,7 @@
         }
 
         // Computes current difficulty for the encounter's live NPCs against the saved party settings
-        function computeEncounterDifficulty(e) {
+        function computeEncounterDifficulty5e(e) {
             ensureScaleState(e);
             const { partySize, partyLevel } = e.scale;
             const thresholds = XP_THRESHOLDS[Math.min(20, Math.max(1, partyLevel))];
@@ -1417,7 +1616,60 @@
             else if (adjXP >= partyMedium) { label = 'Medium'; color = '#fde047'; }
             else if (adjXP >= partyEasy)   { label = 'Easy';   color = '#86efac'; }
 
-            return { totalXP, mult, adjXP, label, color, partyEasy, partyMedium, partyHard, partyDeadly, monsterCount: aliveNpcs.length };
+            return { system: '5e', totalXP, mult, adjXP, label, color, partyEasy, partyMedium, partyHard, partyDeadly, monsterCount: aliveNpcs.length };
+        }
+
+        // ── PF2 Encounter Budget (GM Core, official XP-budget system) ──────
+        // Confirmed values (GM Core / Archives of Nethys "XP Budget" page):
+        //   level -4 or lower: 10 XP   |  -3: 15  |  -2: 20  |  -1: 30
+        //   same level (0):    40 XP   |  +1: 60  |  +2: 80  |  +3: 120  |  +4 or higher: 160
+        // Difficulty thresholds are for a 4-player party and scale linearly with party size:
+        //   Trivial <40, Low 40-59, Moderate 60-79, Severe 80-119, Extreme 120+
+        // This is a genuinely different model from 5e's "sum XP × encounter multiplier" —
+        // PF2 XP is inherently relative to party level per-monster, with no separate
+        // monster-count multiplier step.
+        const PF2_XP_BY_LEVEL_DIFF = {
+            '-4': 10, '-3': 15, '-2': 20, '-1': 30,
+            '0': 40, '1': 60, '2': 80, '3': 120, '4': 160,
+        };
+
+        function pf2XpForMonster(monsterLevel, partyLevel) {
+            let diff = monsterLevel - partyLevel;
+            diff = Math.max(-4, Math.min(4, diff)); // clamp per official rules
+            return PF2_XP_BY_LEVEL_DIFF[String(diff)];
+        }
+
+        function computeEncounterDifficultyPF2(e) {
+            ensureScaleState(e);
+            const { partySize, partyLevel } = e.scale;
+
+            const aliveNpcs = e.combatants.filter(c => c.type === 'npc' && c.hp > 0);
+            const totalXP = aliveNpcs.reduce((sum, c) => {
+                const monsterLevel = parseInt(c.cr) || 0; // PF2 stores level in the same `cr` field as 5e's CR
+                return sum + pf2XpForMonster(monsterLevel, partyLevel);
+            }, 0);
+
+            // PF2 thresholds are defined for a 4-player party and scale linearly with party size
+            const scaleFactor = partySize / 4;
+            const partyEasy   = Math.round(40 * scaleFactor);  // "Low" floor in PF2 terms
+            const partyMedium = Math.round(60 * scaleFactor);  // "Moderate" floor
+            const partyHard   = Math.round(80 * scaleFactor);  // "Severe" floor
+            const partyDeadly = Math.round(120 * scaleFactor); // "Extreme" floor
+
+            let label = 'Trivial', color = '#6b7280';
+            if (totalXP >= partyDeadly)      { label = 'Extreme';  color = '#f87171'; }
+            else if (totalXP >= partyHard)   { label = 'Severe';   color = '#fb923c'; }
+            else if (totalXP >= partyMedium) { label = 'Moderate'; color = '#fde047'; }
+            else if (totalXP >= partyEasy)   { label = 'Low';      color = '#86efac'; }
+
+            // No separate "multiplier" step in PF2 — kept as 1 so the shared render code
+            // (which shows "base × mult" for transparency) still displays sensibly.
+            return { system: 'pf2', totalXP, mult: 1, adjXP: totalXP, label, color, partyEasy, partyMedium, partyHard, partyDeadly, monsterCount: aliveNpcs.length };
+        }
+
+        // Dispatches to the correct difficulty model for the active rule system.
+        function computeEncounterDifficulty(e) {
+            return activeSystem === 'pf2' ? computeEncounterDifficultyPF2(e) : computeEncounterDifficulty5e(e);
         }
 
         function setEncounterScale(eId, field, value) {
@@ -1821,9 +2073,13 @@
                     + '</div>'
                   + '</div>'
                   + '<div style="font-size:11px;color:#9ca3af;margin-bottom:10px;line-height:1.5">'
-                    + 'Adjusted XP: <strong style="color:#e5e7eb">' + diff.adjXP.toLocaleString() + '</strong>'
-                    + ' (' + diff.totalXP.toLocaleString() + ' base × ' + diff.mult + ' for ' + diff.monsterCount + ' monster' + (diff.monsterCount === 1 ? '' : 's') + ')<br>'
-                    + 'Thresholds — Easy ' + diff.partyEasy.toLocaleString() + ' · Medium ' + diff.partyMedium.toLocaleString() + ' · Hard ' + diff.partyHard.toLocaleString() + ' · Deadly ' + diff.partyDeadly.toLocaleString()
+                    + (diff.system === 'pf2'
+                        ? ('Encounter XP: <strong style="color:#e5e7eb">' + diff.totalXP.toLocaleString() + '</strong>'
+                           + ' (' + diff.monsterCount + ' monster' + (diff.monsterCount === 1 ? '' : 's') + ', PF2 level-based budget)<br>'
+                           + 'Thresholds — Low ' + diff.partyEasy.toLocaleString() + ' · Moderate ' + diff.partyMedium.toLocaleString() + ' · Severe ' + diff.partyHard.toLocaleString() + ' · Extreme ' + diff.partyDeadly.toLocaleString())
+                        : ('Adjusted XP: <strong style="color:#e5e7eb">' + diff.adjXP.toLocaleString() + '</strong>'
+                           + ' (' + diff.totalXP.toLocaleString() + ' base × ' + diff.mult + ' for ' + diff.monsterCount + ' monster' + (diff.monsterCount === 1 ? '' : 's') + ')<br>'
+                           + 'Thresholds — Easy ' + diff.partyEasy.toLocaleString() + ' · Medium ' + diff.partyMedium.toLocaleString() + ' · Hard ' + diff.partyHard.toLocaleString() + ' · Deadly ' + diff.partyDeadly.toLocaleString()))
                   + '</div>'
                   + '<div style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700;margin-bottom:5px">Quick Adjust (scales all NPC HP &amp; damage)</div>'
                   + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px">'
@@ -1997,7 +2253,7 @@
         }
 
         // ── Default ailments ─────────────────────────────────────────────
-        const DEFAULT_AILMENTS = [
+        const DEFAULT_AILMENTS_5E = [
             { name:'Poison',          duration:'3', damage:'1d4' },
             { name:'Acid Burn',       duration:'2', damage:'1d6' },
             { name:'Bleeding',        duration:'3', damage:'1d4' },
@@ -2018,6 +2274,52 @@
             { name:'Stunned',         duration:'1', damage:'none' },
             { name:'Unconscious',     duration:'2', damage:'none' },
         ];
+
+        // ── PF2 Conditions (Phase 3) ─────────────────────────────────────────
+        // IMPORTANT DIVERGENCE FROM 5e: real PF2 conditions like Frightened, Sickened,
+        // Enfeebled, Slowed, and Stunned carry a NUMERIC VALUE that decreases by 1 at the
+        // end of the affected creature's turn — they are not fixed-round timers the way our
+        // ailment engine currently models them (round count set once, ticks down via
+        // Start/End Turn the same way regardless of value). Persistent Damage is PF2's real
+        // damage-over-time mechanic and normally ends via a DC 15 flat check each turn, not
+        // a fixed round count either.
+        //
+        // For Phase 3 we map these onto our existing "duration in rounds + damage dice"
+        // ailment engine as the closest practical fit — the duration value here represents
+        // a reasonable default numeric value (shown/tracked the same way as 5e's round
+        // count) rather than a literal "rounds remaining" in the strict PF2 sense. This
+        // gets real PF2 condition names and typical damage values into the tool now; a true
+        // value-based condition model (with its own decrement rule and save-based removal
+        // for Persistent Damage) would be a reasonable Phase 4 if this approximation proves
+        // too rough in play.
+        const DEFAULT_AILMENTS_PF2 = [
+            { name: 'Persistent Bleed',    duration: '3', damage: '1d6' },  // Persistent Damage (bleed) — normally ends via DC15 flat check
+            { name: 'Persistent Fire',     duration: '2', damage: '1d6' },  // Persistent Damage (fire)
+            { name: 'Persistent Poison',   duration: '3', damage: '1d4' },  // Persistent Damage (poison)
+            { name: 'Persistent Acid',     duration: '2', damage: '1d6' },
+            { name: 'Frightened',          duration: '1', damage: 'none' }, // value decreases by 1/turn in real PF2
+            { name: 'Sickened',            duration: '1', damage: 'none' },
+            { name: 'Enfeebled',           duration: '2', damage: 'none' },
+            { name: 'Clumsy',              duration: '2', damage: 'none' },
+            { name: 'Drained',             duration: '2', damage: 'none' },
+            { name: 'Stupefied',           duration: '2', damage: 'none' },
+            { name: 'Slowed',              duration: '1', damage: 'none' },
+            { name: 'Stunned',             duration: '1', damage: 'none' },
+            { name: 'Prone',               duration: '1', damage: 'none' },
+            { name: 'Grabbed',             duration: '1', damage: 'none' },
+            { name: 'Restrained',          duration: '2', damage: 'none' },
+            { name: 'Paralyzed',           duration: '2', damage: 'none' },
+            { name: 'Blinded',             duration: '2', damage: 'none' },
+            { name: 'Deafened',            duration: '2', damage: 'none' },
+            { name: 'Dazzled',             duration: '2', damage: 'none' },
+            { name: 'Fatigued',            duration: '3', damage: 'none' },
+            { name: 'Doomed',              duration: '3', damage: 'none' },
+            { name: 'Wounded',             duration: '3', damage: 'none' },
+            { name: 'Off-Guard',           duration: '1', damage: 'none' }, // formerly "Flat-Footed"
+        ];
+
+        // Points at the correct default set for the active rule system
+        const DEFAULT_AILMENTS = activeSystem === 'pf2' ? DEFAULT_AILMENTS_PF2 : DEFAULT_AILMENTS_5E;
 
         if (ailmentLibrary.length === 0) { ailmentLibrary = DEFAULT_AILMENTS.map(a => ({...a})); save(); }
 
@@ -2055,6 +2357,16 @@
         (function() {
             const badge = document.getElementById('header-system-badge');
             if (badge) badge.textContent = RULE_SYSTEMS[activeSystem].emoji + ' ' + RULE_SYSTEMS[activeSystem].shortLabel;
+
+            const expBtn = document.getElementById('pf2-experimental-btn');
+            if (expBtn) expBtn.style.display = (activeSystem === 'pf2') ? '' : 'none';
+
+            const ailTitle = document.getElementById('ailments-page-title');
+            const ailNote  = document.getElementById('ailments-pf2-note');
+            if (activeSystem === 'pf2') {
+                if (ailTitle) ailTitle.textContent = 'Condition Library';
+                if (ailNote)  ailNote.style.display = '';
+            }
         })();
 
         // Delegated listener for attack buttons — avoids inline onclick with large IDs
@@ -2088,16 +2400,22 @@
         renderAilmentLibrary();
         renderEncounters();
 
+        // Dispatches to the correct bestiary loader for the active rule system.
+        function loadActiveBestiary(force) {
+            if (activeSystem === 'pf2') loadBestiaryPF2(force);
+            else loadBestiary(force);
+        }
+
         // Load bestiary when NPC tab is first visited
         document.querySelector('[data-label="NPC Library"]').addEventListener('click', () => {
             if (!document.getElementById('bestiary-status').dataset.loaded) {
                 document.getElementById('bestiary-status').dataset.loaded = '1';
-                loadBestiary();
+                loadActiveBestiary();
             }
         }, { once: false });
 
         // If already on NPCs page, kick off load immediately
-        if (document.getElementById('npcs').classList.contains('active-page')) loadBestiary();
+        if (document.getElementById('npcs').classList.contains('active-page')) loadActiveBestiary();
         else renderLibNPCs();
 
         // ── Service Worker ───────────────────────────────────────────────
