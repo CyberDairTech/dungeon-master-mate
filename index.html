@@ -477,6 +477,7 @@
         let expandedEncounters = new Set();
         let editingEncounterName = new Set();
         let editingInit    = new Set();
+        let editingCombatantName = new Set(); // combatant IDs currently showing a rename input
         let customAttacksDraft = [];   // attacks being built for a new custom NPC
 
         // ── Persistence ──────────────────────────────────────────────────
@@ -1939,6 +1940,21 @@
             if (c) { c.init = parseInt(val) || 0; editingInit.delete(cId); save(); renderEncounters(); }
         }
 
+        function startRenameCombatant(cId) {
+            editingCombatantName.add(cId);
+            renderEncounters();
+        }
+
+        function renameCombatant(eId, cId, val) {
+            const c = encounters.find(en => en.id === eId)?.combatants.find(co => co.id === cId);
+            if (c) {
+                const trimmed = (val || '').trim();
+                if (trimmed) c.name = trimmed; // ignore blank submissions, keep prior name
+                editingCombatantName.delete(cId);
+                save(); renderEncounters();
+            }
+        }
+
         function modifyHp(eId, cId, amount) {
             const c = encounters.find(e => e.id === eId)?.combatants.find(co => co.id === cId);
             if (c) { c.hp = Math.min(c.maxHp, Math.max(0, c.hp + amount)); save(); renderEncounters(); }
@@ -2255,7 +2271,15 @@
                 + (isActiveTurn ? '<div style="position:absolute;top:-9px;left:10px;background:#eab308;color:#111827;font-size:10px;font-weight:800;padding:1px 8px;border-radius:6px;letter-spacing:0.03em;z-index:5">CURRENT TURN</div>' : '')
                 + deadOverlay
                 + '<div class="flex justify-between items-center mb-1">'
-                + '<div class="flex items-center gap-2">' + initHtml + '<span class="font-bold">' + c.name + (c.isBoss ? ' 👑' : '') + '</span></div>'
+                + '<div class="flex items-center gap-2">' + initHtml
+                  + (editingCombatantName.has(c.id)
+                      ? '<input type="text" value="' + c.name.replace(/"/g, '&quot;') + '" autofocus'
+                        + ' onblur="renameCombatant(' + e.id + ',' + c.id + ',this.value)"'
+                        + ' onkeydown="if(event.key===\'Enter\')this.blur();"'
+                        + ' style="background:#111827;border:1px solid #6366f1;border-radius:6px;padding:2px 6px;font-size:13px;font-weight:700;color:#fff;width:140px">'
+                      : '<span class="font-bold">' + c.name + (c.isBoss ? ' 👑' : '') + '</span>'
+                        + '<button onclick="startRenameCombatant(' + c.id + ')" style="font-size:10px;color:#6b7280;padding:2px" title="Rename">✎</button>')
+                  + '</div>'
                 + (c.type === 'npc' && !isDead
                     ? '<div class="flex gap-1">'
                       + '<button onclick="moveNPC(' + e.id + ',' + c.id + ')" style="font-size:11px;padding:3px 9px;border-radius:6px;font-weight:700;background:rgba(56,189,248,0.15);border:1px solid rgba(56,189,248,0.4);color:#7dd3fc;cursor:pointer;white-space:nowrap">🏃 Move</button>'
