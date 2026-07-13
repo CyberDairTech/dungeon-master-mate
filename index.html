@@ -1333,11 +1333,17 @@
         const rollBanners = {}; // { cId: { d20, bonus, total, isCrit, isFumble } }
         const dmgBanners  = {}; // { cId: { atkName, total, diceLabel, damageType, isCrit } }
 
-        function rollAttackCheck(eId, cId) {
+        // Rolls a to-hit check for ONE SPECIFIC attack (identified by atkIdx), using that
+        // attack's own attackBonus — different attacks on the same monster can have
+        // different bonuses, so the roll must be tied to the attack the DM actually picked,
+        // not a single generic "best available" bonus for the whole turn.
+        function rollAttackCheck(eId, cId, atkIdx) {
             const eIdx = encounters.findIndex(en => en.id === eId);
             if (eIdx === -1) return;
             const c = encounters[eIdx].combatants.find(co => co.id === cId);
             if (!c) return;
+            const atk = c.attacks && c.attacks[atkIdx];
+            if (!atk) return;
 
             const totalActions = turnAttackCount[cId] || 0; // total actions used (move + attack + ...)
 
@@ -1348,32 +1354,34 @@
                 return;
             }
 
+            // Block if this specific attack is on cooldown
+            if (!c.rechargeCounters) c.rechargeCounters = {};
+            const curCD = c.rechargeCounters[atkIdx];
+            if (typeof curCD === 'number' && curCD > 0) {
+                moveStatus[cId] = '⏳ ' + atk.name + ' on cooldown — ' + curCD + ' rd' + (curCD === 1 ? '' : 's') + ' remaining';
+                renderEncounters();
+                return;
+            }
+
             // Penalty is based on how many ATTACK ROLLS have happened this turn,
             // not how many total actions (a Move doesn't add to the attack penalty)
             const atkNum  = turnAttackNumber[cId] || 0; // 0-based count of attacks already rolled
             const penalty = atkNum >= 2 ? -10 : atkNum === 1 ? -5 : 0;
+            const bonus   = (atk.attackBonus || 0) + penalty;
 
-            if (!c.rechargeCounters) c.rechargeCounters = {};
-            const available = (c.attacks || []).filter((a, i) => {
-                const cd = c.rechargeCounters[i];
-                return !(typeof cd === 'number' && cd > 0);
-            });
-            const baseBonus = available.length > 0 ? Math.max(...available.map(a => a.attackBonus || 0)) : 0;
-            const bonus     = baseBonus + penalty;
+            // Roll the d20 using THIS attack's own bonus
+            const d20     = Math.floor(Math.random() * 20) + 1;
+            const total    = d20 + bonus;
+            const isCrit   = d20 === 20;
+            const isFumble = d20 === 1;
 
-            // Roll the d20 and store the result for this combatant's card banner
-            const d20      = Math.floor(Math.random() * 20) + 1;
-            const total     = d20 + bonus;
-            const isCrit    = d20 === 20;
-            const isFumble  = d20 === 1;
-
-            rollBanners[cId] = { d20, bonus, total, isCrit, isFumble, atkNum };
+            rollBanners[cId] = { d20, bonus, total, isCrit, isFumble, atkNum, atkIdx };
 
             // Show the attack number/penalty on the inline status line
             const attackLabel = 'Attack ' + (atkNum + 1) + (penalty !== 0 ? ' (' + penalty + ')' : '');
-            moveStatus[cId] = '🎲 Rolling — ' + attackLabel;
+            moveStatus[cId] = '🎲 Rolling ' + atk.name + ' — ' + attackLabel;
 
-            // Mark this combatant as having rolled — reveals the banner + Hit/Crit/Miss buttons
+            // Mark this combatant as having rolled — reveals the banner + Hit/Crit/Miss under this attack
             rolledNow.add(cId);
             renderEncounters();
         }
@@ -1403,6 +1411,9 @@
             const c = encounters[eIdx].combatants.find(co => co.id === cId);
             if (!c) return;
 
+            const rb     = rollBanners[cId];
+            const atkIdx = rb ? rb.atkIdx : null;
+
             // Always increment BOTH counters, regardless of outcome:
             // - turnAttackCount: total actions this turn (drives the 3-action cap)
             // - turnAttackNumber: attack rolls specifically (drives the -5/-10 penalty)
@@ -1414,20 +1425,25 @@
 
             if (outcome === 'miss') {
                 moveStatus[cId] = '❌ Missed — Action ' + actionNum + '/' + MAX_ATTACKS_PER_TURN + ' used';
-                attackingNow.delete(cId);
                 critNow.delete(cId);
                 renderEncounters();
                 return;
             }
 
-            // Hit or Crit — reveal the attack list
-            moveStatus[cId] = (outcome === 'crit' ? '💥 Critical hit! ' : '✅ Hit! ') + 'Choose an attack — Action ' + actionNum + '/' + MAX_ATTACKS_PER_TURN;
-            attackingNow.add(cId);
+            // Hit or Crit — immediately roll damage for the SAME attack that was just
+            // rolled to-hit (no separate "choose an attack" step needed anymore).
             if (outcome === 'crit') critNow.add(cId); else critNow.delete(cId);
-            renderEncounters();
+            if (atkIdx != null) {
+                rollAttackDamage(eId, cId, atkIdx, outcome === 'crit');
+            } else {
+                renderEncounters();
+            }
         }
 
-        function rollAttack(eId, cId, atkIdx) {
+        // Rolls damage for a specific attack. isCrit is passed explicitly by the caller
+        // (resolveAttackRoll) rather than re-read from critNow, since critNow gets cleared
+        // as part of the same resolution step this function runs within.
+        function rollAttackDamage(eId, cId, atkIdx, isCrit) {
             const eIdx = encounters.findIndex(en => en.id === eId);
             if (eIdx === -1) return;
             const cIdx = encounters[eIdx].combatants.findIndex(co => co.id === cId);
@@ -1437,19 +1453,10 @@
             if (!atk) return;
             if (!c.rechargeCounters) c.rechargeCounters = {};
 
-            // Block if on cooldown
-            const curCD = c.rechargeCounters[atkIdx];
-            if (typeof curCD === 'number' && curCD > 0) {
-                showToast('⏳ ' + atk.name + ' on cooldown — ' + curCD + ' rd' + (curCD === 1 ? '' : 's') + ' remaining');
-                return;
-            }
-
-            // Set cooldown if attack has recharge
+            // Set cooldown if attack has recharge (to-hit was already confirmed by this point)
             if (atk.rechargeOn != null && atk.rechargeOn > 0) {
                 c.rechargeCounters[atkIdx] = atk.rechargeOn;
             }
-
-            const isCrit = critNow.has(cId);
 
             // Roll damage
             let total = 0;
@@ -1457,7 +1464,6 @@
             total += atk.bonus || 0;
             if (isCrit) total *= 2;
 
-            // Revert to roll-to-hit state
             attackingNow.delete(cId);
             critNow.delete(cId);
 
@@ -1777,6 +1783,18 @@
             e.actedIds    = [];
             e.roundNumber = 1;
 
+            // Fresh turn state for every combatant at the start of the encounter
+            e.combatants.forEach(c => {
+                attackingNow.delete(c.id);
+                critNow.delete(c.id);
+                rolledNow.delete(c.id);
+                delete rollBanners[c.id];
+                delete dmgBanners[c.id];
+                delete moveStatus[c.id];
+                turnAttackCount[c.id]  = 0;
+                turnAttackNumber[c.id] = 0;
+            });
+
             // Skip any dead NPCs sitting at the top of initiative
             let firstLiving = byInit.find(c => !isSkippable(c));
             if (!firstLiving) {
@@ -1815,9 +1833,22 @@
                 const remaining = byInit.filter(c => !e.actedIds.includes(c.id));
 
                 if (remaining.length === 0) {
-                    // Everyone has acted — start a new round
+                    // Everyone has acted — start a new round.
+                    // Auto-reset every living combatant's turn state (same as tapping
+                    // ▶ Start Turn manually) so the DM doesn't have to click it on
+                    // each combatant every round.
                     e.roundNumber += 1;
                     e.actedIds     = [];
+                    e.combatants.forEach(c => {
+                        attackingNow.delete(c.id);
+                        critNow.delete(c.id);
+                        rolledNow.delete(c.id);
+                        delete rollBanners[c.id];
+                        delete dmgBanners[c.id];
+                        delete moveStatus[c.id];
+                        turnAttackCount[c.id]  = 0;
+                        turnAttackNumber[c.id] = 0;
+                    });
                     continue; // re-evaluate with the fresh round
                 }
 
@@ -2190,8 +2221,6 @@
             const totalActions = turnAttackCount[c.id] || 0;  // total actions used (move + attack), drives 3-action cap
             const atkNum       = turnAttackNumber[c.id] || 0;  // attack rolls only, drives -5/-10 penalty
             const hasRolled    = rolledNow.has(c.id);
-            const isAttacking  = attackingNow.has(c.id);
-            const isCritChoice = critNow.has(c.id);
             const penalty      = atkNum >= 2 ? -10 : atkNum === 1 ? -5 : 0;
             const attackLabel  = 'Attack ' + (atkNum + 1) + (penalty !== 0 ? ' (' + penalty + ')' : '');
             const capped       = totalActions >= MAX_ATTACKS_PER_TURN;
@@ -2213,50 +2242,59 @@
 
             const attacksHtml = c.type === 'npc' && c.attacks && c.attacks.length > 0
                 ? '<div class="mb-2">'
-                  + (isAttacking
-                    ? ('<div class="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1">' + (isCritChoice ? '💥 Critical — Choose Attack (x2 dmg)' : 'Choose Attack') + '</div>'
-                      + '<div class="space-y-1">'
-                      + c.attacks.map((atk, idx) => {
-                          const typeEmoji = {slashing:'⚔',piercing:'🗡',bludgeoning:'🔨',fire:'🔥',cold:'❄',lightning:'⚡',poison:'☠',acid:'🧪',necrotic:'💀',radiant:'✨',psychic:'🧠',force:'💥',thunder:'🌩'}[atk.damageType] || '⚔';
-                          const typeColor = {slashing:'border-orange-700',piercing:'border-yellow-700',bludgeoning:'border-stone-600',fire:'border-red-700',cold:'border-blue-400',lightning:'border-yellow-400',poison:'border-green-700',acid:'border-lime-600',necrotic:'border-purple-800',radiant:'border-yellow-300',psychic:'border-pink-600',force:'border-indigo-500',thunder:'border-sky-600'}[atk.damageType] || 'border-gray-600';
-                          const avgRoll   = Math.round(atk.count * ((atk.die + 1) / 2) + (atk.bonus || 0));
-                          const dice      = atk.count + 'd' + atk.die + (atk.bonus ? (atk.bonus > 0 ? '+' + atk.bonus : atk.bonus) : '');
-                          if (!c.rechargeCounters) c.rechargeCounters = {};
-                          const curCount  = c.rechargeCounters[idx];
-                          const recharging = typeof curCount === 'number' && curCount > 0;
-                          const atkBtn = '<button class="atk-btn flex-1 text-left rounded border-l-4 ' + typeColor + ' bg-gray-950 px-3 py-2 flex justify-between items-center border border-gray-600' + (recharging ? ' opacity-40' : ' hover:bg-gray-700') + '"'
-                              + (recharging ? ' style="cursor:not-allowed"' : '')
-                              + ' data-eid="' + e.id + '" data-cid="' + c.id + '" data-idx="' + idx + '">'
-                              + '<span class="font-semibold text-sm">' + typeEmoji + ' ' + atk.name + '</span>'
-                              + '<span class="text-xs font-mono" style="color:#9ca3af">' + dice + ' · avg <strong style="color:' + (recharging ? '#4b5563' : '#fff') + '">' + avgRoll + '</strong> ' + atk.damageType + '</span>'
-                              + '</button>';
-                          const rechargePill = recharging
-                              ? ('<span style="min-width:52px;padding:6px 8px;border-radius:8px;font-size:12px;font-weight:700;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;display:inline-block;text-align:center;cursor:default">⏳ ' + curCount + ' rd' + (curCount === 1 ? '' : 's') + '</span>')
-                              : ('<select onchange="if(this.value){tickRecharge(' + e.id + ',' + c.id + ',' + idx + ',parseInt(this.value));this.selectedIndex=0;}" style="min-width:52px;padding:5px 4px;border-radius:8px;font-size:12px;background:#111827;border:1px solid #374151;color:#9ca3af;cursor:pointer"><option value="">CD</option><option value="1">1 rd</option><option value="2">2 rds</option><option value="3">3 rds</option><option value="4">4 rds</option><option value="5">5 rds</option><option value="6">6 rds</option></select>');
-                          return '<div class="flex gap-2 items-center mb-1">' + atkBtn + rechargePill + '</div>';
-                      }).join('')
-                      + '</div>')
-                    : (!hasRolled
-                      ? ('<button class="atk-roll-btn" data-eid="' + e.id + '" data-cid="' + c.id + '" data-capped="' + (capped ? '1' : '0') + '" style="width:100%;padding:10px;border-radius:10px;font-weight:700;font-size:13px;background:' + (capped ? 'rgba(107,114,128,0.15);border:1px solid rgba(107,114,128,0.3);color:#9ca3af' : 'rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc') + ';cursor:pointer">' + (capped ? '🚫 Turn Complete' : '🎲 Roll to Hit') + '</button>')
-                      : (function() {
+                  + '<div class="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1">' + (capped ? '🚫 Turn Complete' : 'Attacks — ' + attackLabel) + '</div>'
+                  + '<div class="space-y-1">'
+                  + c.attacks.map((atk, idx) => {
+                      const typeEmoji = {slashing:'⚔',piercing:'🗡',bludgeoning:'🔨',fire:'🔥',cold:'❄',lightning:'⚡',poison:'☠',acid:'🧪',necrotic:'💀',radiant:'✨',psychic:'🧠',force:'💥',thunder:'🌩'}[atk.damageType] || '⚔';
+                      const typeColorHex = {slashing:'#c2410c',piercing:'#a16207',bludgeoning:'#57534e',fire:'#b91c1c',cold:'#60a5fa',lightning:'#facc15',poison:'#15803d',acid:'#65a30d',necrotic:'#6b21a8',radiant:'#fde047',psychic:'#db2777',force:'#6366f1',thunder:'#0284c7'}[atk.damageType] || '#4b5563';
+                      const avgRoll   = Math.round(atk.count * ((atk.die + 1) / 2) + (atk.bonus || 0));
+                      const dice      = atk.count + 'd' + atk.die + (atk.bonus ? (atk.bonus > 0 ? '+' + atk.bonus : atk.bonus) : '');
+                      if (!c.rechargeCounters) c.rechargeCounters = {};
+                      const curCount   = c.rechargeCounters[idx];
+                      const recharging = typeof curCount === 'number' && curCount > 0;
+
+                      // This specific attack's own to-hit bonus, with the multi-attack penalty applied
+                      const atkBonus = (atk.attackBonus || 0) + penalty;
+                      const bonusStr = atkBonus !== 0 ? (atkBonus > 0 ? ' (+' + atkBonus + ')' : ' (' + atkBonus + ')') : '';
+
+                      const isThisRolled  = hasRolled && rollBanners[c.id] && rollBanners[c.id].atkIdx === idx;
+                      const locked        = recharging || capped || (hasRolled && !isThisRolled);
+
+                      // Roll banner + Hit/Crit/Miss, shown directly under THIS attack once it has been rolled
+                      let rollSection = '';
+                      if (isThisRolled) {
                           const rb = rollBanners[c.id];
-                          if (!rb) return '';
-                          const bColor = rb.isCrit ? 'rgba(234,179,8,0.15);border:1px solid rgba(234,179,8,0.5)' : rb.isFumble ? 'rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.5)' : 'rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3)';
+                          const bColor     = rb.isCrit ? 'rgba(234,179,8,0.15);border:1px solid rgba(234,179,8,0.5)' : rb.isFumble ? 'rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.5)' : 'rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3)';
                           const bTextColor = rb.isCrit ? '#fde047' : rb.isFumble ? '#f87171' : '#e5e7eb';
-                          const bonusStr = rb.bonus !== 0 ? (rb.bonus > 0 ? ' + ' + rb.bonus : ' − ' + Math.abs(rb.bonus)) : '';
+                          const rbBonusStr = rb.bonus !== 0 ? (rb.bonus > 0 ? ' + ' + rb.bonus : ' − ' + Math.abs(rb.bonus)) : '';
                           const resultNote = rb.isCrit ? '🎯 Natural 20!' : rb.isFumble ? '💢 Natural 1!' : 'vs target AC';
-                          return '<div style="background:' + bColor + ';border-radius:8px;padding:8px 10px;margin-bottom:8px;text-align:center">'
-                            + '<div style="font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:2px">' + attackLabel + '</div>'
-                            + '<div style="font-size:26px;font-weight:900;color:' + bTextColor + '">' + rb.d20 + bonusStr + ' = ' + rb.total + '</div>'
-                            + '<div style="font-size:11px;color:#9ca3af">' + resultNote + '</div>'
-                          + '</div>'
-                            + '<div class="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1">Select Outcome</div>'
-                      })()
-                      + ('<div class="grid grid-cols-3 gap-1">'
-                        + '<button onclick="resolveAttackRoll(' + e.id + ',' + c.id + ',\'hit\')" style="padding:10px 4px;border-radius:8px;font-weight:700;font-size:12px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);color:#86efac;cursor:pointer">✅ Hit</button>'
-                        + '<button onclick="resolveAttackRoll(' + e.id + ',' + c.id + ',\'crit\')" style="padding:10px 4px;border-radius:8px;font-weight:700;font-size:12px;background:rgba(234,179,8,0.18);border:1px solid rgba(234,179,8,0.5);color:#fde047;cursor:pointer">💥 Crit</button>'
-                        + '<button onclick="resolveAttackRoll(' + e.id + ',' + c.id + ',\'miss\')" style="padding:10px 4px;border-radius:8px;font-weight:700;font-size:12px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;cursor:pointer">❌ Miss</button>'
-                        + '</div>')))
+                          rollSection = '<div style="background:' + bColor + ';border-radius:8px;padding:8px 10px;margin:4px 0;text-align:center">'
+                              + '<div style="font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:2px">' + atk.name + '</div>'
+                              + '<div style="font-size:26px;font-weight:900;color:' + bTextColor + '">' + rb.d20 + rbBonusStr + ' = ' + rb.total + '</div>'
+                              + '<div style="font-size:11px;color:#9ca3af">' + resultNote + '</div>'
+                              + '</div>'
+                              + '<div class="grid grid-cols-3 gap-1" style="margin-bottom:6px">'
+                              + '<button onclick="resolveAttackRoll(' + e.id + ',' + c.id + ',\'hit\')" style="padding:10px 4px;border-radius:8px;font-weight:700;font-size:12px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);color:#86efac;cursor:pointer">✅ Hit</button>'
+                              + '<button onclick="resolveAttackRoll(' + e.id + ',' + c.id + ',\'crit\')" style="padding:10px 4px;border-radius:8px;font-weight:700;font-size:12px;background:rgba(234,179,8,0.18);border:1px solid rgba(234,179,8,0.5);color:#fde047;cursor:pointer">💥 Crit</button>'
+                              + '<button onclick="resolveAttackRoll(' + e.id + ',' + c.id + ',\'miss\')" style="padding:10px 4px;border-radius:8px;font-weight:700;font-size:12px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;cursor:pointer">❌ Miss</button>'
+                              + '</div>';
+                      }
+
+                      const atkBtn = '<button class="pf2-atk-roll-btn" data-eid="' + e.id + '" data-cid="' + c.id + '" data-idx="' + idx + '"'
+                          + ' style="width:100%;text-align:left;border-radius:8px;border-left:4px solid ' + typeColorHex + ';background:#0a0a12;padding:10px 12px;display:flex;justify-content:space-between;align-items:center' + (locked ? ';opacity:0.4;cursor:not-allowed' : ';cursor:pointer') + '"'
+                          + (locked ? ' disabled' : '')
+                          + '>'
+                          + '<span class="font-semibold text-sm">' + typeEmoji + ' ' + atk.name + '<span style="font-size:11px;color:#9ca3af;font-weight:400">' + bonusStr + '</span></span>'
+                          + '<span class="text-xs font-mono" style="color:#9ca3af">' + dice + ' · avg <strong style="color:' + (locked ? '#4b5563' : '#fff') + '">' + avgRoll + '</strong> ' + atk.damageType + '</span>'
+                          + '</button>';
+
+                      const rechargePill = recharging
+                          ? ('<span style="min-width:52px;padding:6px 8px;border-radius:8px;font-size:12px;font-weight:700;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;display:inline-block;text-align:center;cursor:default">⏳ ' + curCount + ' rd' + (curCount === 1 ? '' : 's') + '</span>')
+                          : ('<select onchange="if(this.value){tickRecharge(' + e.id + ',' + c.id + ',' + idx + ',parseInt(this.value));this.selectedIndex=0;}" style="min-width:52px;padding:5px 4px;border-radius:8px;font-size:12px;background:#111827;border:1px solid #374151;color:#9ca3af;cursor:pointer"><option value="">CD</option><option value="1">1 rd</option><option value="2">2 rds</option><option value="3">3 rds</option><option value="4">4 rds</option><option value="5">5 rds</option><option value="6">6 rds</option></select>');
+
+                      return '<div class="flex gap-2 items-center mb-1">' + atkBtn + rechargePill + '</div>' + rollSection;
+                  }).join('')
+                  + '</div>'
                   + '</div>'
                 : (c.type === 'npc' ? '<div class="text-gray-600 text-xs mb-2">No attacks defined</div>' : '');
 
@@ -2418,31 +2456,19 @@
             }
         })();
 
-        // Delegated listener for attack buttons — avoids inline onclick with large IDs
+        // Delegated listener for the per-attack roll-to-hit buttons — avoids inline
+        // onclick with large IDs. Each attack button rolls its OWN to-hit check
+        // (using that attack's own bonus) rather than a single generic roll for the
+        // whole turn, since different attacks on the same monster can have different
+        // attack bonuses.
         document.getElementById('encounter-list').addEventListener('click', function(evt) {
-            const rollBtn = evt.target.closest('.atk-roll-btn');
-            if (rollBtn) {
-                const eId    = parseInt(rollBtn.dataset.eid);
-                const cId    = parseInt(rollBtn.dataset.cid);
-                const capped = rollBtn.dataset.capped === '1';
-                if (capped) {
-                    const eIdx = encounters.findIndex(en => en.id === eId);
-                    const c    = eIdx !== -1 ? encounters[eIdx].combatants.find(co => co.id === cId) : null;
-                    alert((c ? c.name : 'This combatant') + ' has already used ' + MAX_ATTACKS_PER_TURN + ' attacks this turn. End the turn before attacking again.');
-                } else {
-                    rollAttackCheck(eId, cId);
-                }
-                return;
-            }
-
-            const btn = evt.target.closest('.atk-btn');
-            if (!btn) return;
-            const eId  = parseInt(btn.dataset.eid);
-            const cId  = parseInt(btn.dataset.cid);
-            const idx  = parseInt(btn.dataset.idx);
-            // Always reset any in-flight animation before starting a new roll
+            const rollBtn = evt.target.closest('.pf2-atk-roll-btn');
+            if (!rollBtn || rollBtn.disabled) return;
+            const eId  = parseInt(rollBtn.dataset.eid);
+            const cId  = parseInt(rollBtn.dataset.cid);
+            const idx  = parseInt(rollBtn.dataset.idx);
             resetDiceState();
-            rollAttack(eId, cId, idx);
+            rollAttackCheck(eId, cId, idx);
         });
 
         renderPlayers();
