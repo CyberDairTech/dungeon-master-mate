@@ -374,10 +374,23 @@
                 <input type="file" id="import-file" class="hidden" onchange="importData(event)">
                 <button onclick="document.getElementById('import-file').click()" class="w-full bg-yellow-700 px-4 py-3 rounded font-bold">📥 Import Backup</button>
             </div>
+            <h3 class="text-sm font-bold text-yellow-500 uppercase tracking-wide mb-2 mt-2">Dev Log</h3>
             <div class="space-y-2 text-gray-400 text-sm">
+                <div class="bg-gray-800 p-2 rounded">2026-07-13: Attacks show up front with individual bonuses — roll to-hit per attack instead of one generic roll, then Hit/Crit/Miss auto-continues to damage.</div>
+                <div class="bg-gray-800 p-2 rounded">2026-07-13: Auto-reset every combatant's turn (actions, cooldown UI) when a new round begins — no more manually tapping Start Turn on everyone.</div>
+                <div class="bg-gray-800 p-2 rounded">2026-07-13: Added inline rename for any combatant in an encounter (handy for renaming a boss NPC).</div>
+                <div class="bg-gray-800 p-2 rounded">2026-07-12: Phase 3 — Pathfinder 2e encounter XP budget system (Low/Moderate/Severe/Extreme) and PF2 condition defaults (Frightened, Sickened, Persistent Damage, etc.).</div>
+                <div class="bg-gray-800 p-2 rounded">2026-07-12: Phase 2 — Pathfinder 2e bestiary with hand-verified default monsters plus an experimental live-fetch option.</div>
+                <div class="bg-gray-800 p-2 rounded">2026-07-12: Phase 1 — D&amp;D 5e / Pathfinder 2e rule-system toggle with fully independent, namespaced storage for each system.</div>
+                <div class="bg-gray-800 p-2 rounded">2026-07-11: Auto turn-order tracker — Begin Round cycles initiative automatically, highlights the active combatant, skips defeated NPCs, and auto-completes a turn if the combatant dies mid-turn.</div>
+                <div class="bg-gray-800 p-2 rounded">2026-07-11: Split Start Turn (resets action budget) and End Turn (applies ailments/cooldowns, advances turn order) into separate buttons.</div>
+                <div class="bg-gray-800 p-2 rounded">2026-07-11: Added Scale Rating panel — live encounter difficulty badge plus Quick Adjust buttons to scale NPC HP/damage/XP on the fly.</div>
+                <div class="bg-gray-800 p-2 rounded">2026-07-10: Added Move button, Hit/Crit/Miss attack flow, multi-attack penalty (-5/-10), and 3-action-per-turn cap.</div>
+                <div class="bg-gray-800 p-2 rounded">2026-07-10: Damage and to-hit rolls now show as an animated overlay/inline banner instead of a simple toast.</div>
+                <div class="bg-gray-800 p-2 rounded">2026-07-09: NPC Library rebuilt around a full SRD bestiary (Open5e) with real attacks, damage types, and recharge parsing; removed the separate Weapons library.</div>
                 <div class="bg-gray-800 p-2 rounded">2026-06-28: PWA edition — offline support, home screen install.</div>
                 <div class="bg-gray-800 p-2 rounded">2026-06-27: Ailment round countdown with auto-expiry.</div>
-                <div class="bg-gray-800 p-2 rounded">2026-06-27: Added Ailment assignment to encounter combatants.</div>
+                <div class="bg-gray-800 p-2 rounded">2026-06-27: Added ailment assignment to encounter combatants.</div>
                 <div class="bg-gray-800 p-2 rounded">2026-06-24: Added Ailment Library and backup/restore.</div>
             </div>
         </div>
