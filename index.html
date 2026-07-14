@@ -1319,6 +1319,7 @@
                 c.originalForm = {
                     name: c.name, attacks: c.attacks, ac: c.ac, perception: c.perception,
                     resistance: c.resistance, cr: c.cr, xp: c.xp, maxHp: c.maxHp,
+                    creatureType: c.creatureType,
                 };
             }
 
@@ -1337,6 +1338,7 @@
             c.xp         = target.xpByCR || c.xp;
             c.maxHp      = newMaxHp;
             c.hp         = Math.max(c.hp === 0 ? 0 : 1, Math.round(newMaxHp * hpPct));
+            c.creatureType = target.type || c.creatureType; // future transforms match against the NEW form
             c.rechargeCounters = {}; // new form's attacks start fresh, old cooldown indices don't apply
 
             save(); renderEncounters();
@@ -1362,6 +1364,7 @@
             c.xp         = orig.xp;
             c.maxHp      = orig.maxHp;
             c.hp         = Math.max(c.hp === 0 ? 0 : 1, Math.round(orig.maxHp * hpPct));
+            c.creatureType = orig.creatureType;
             c.rechargeCounters = {};
 
             const revertedName = c.transformedInto ? (' from ' + c.transformedInto) : '';
@@ -1370,6 +1373,26 @@
 
             save(); renderEncounters();
             showToast('↩️ ' + orig.name + ' reverts back' + revertedName);
+        }
+
+        // Splits a comma-separated type/traits string into normalised, comparable tags.
+        // e.g. "humanoid, goblin" -> ["humanoid", "goblin"], "Undead" -> ["undead"]
+        function traitTags(typeStr) {
+            if (!typeStr) return [];
+            return typeStr.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+        }
+
+        // Two NPCs are considered trait-compatible for a transform if they share at
+        // least one type/trait tag (e.g. both "humanoid", both "undead"). This keeps
+        // the default transform list sensible (a Goblin won't casually list a
+        // Beholder) while never fully blocking the DM — anything can still be picked
+        // from the "Other Monsters" group below, since some transforms are
+        // intentionally unnatural (a cursed noble becoming a monster, etc.).
+        function isTraitCompatible(typeA, typeB) {
+            const tagsA = traitTags(typeA);
+            const tagsB = traitTags(typeB);
+            if (tagsA.length === 0 || tagsB.length === 0) return false;
+            return tagsA.some(t => tagsB.includes(t));
         }
 
         function renderTransformControl(e, c) {
@@ -1388,16 +1411,46 @@
                 ].join('');
             }
 
-            // Not transformed — show the dropdown to pick a target form from the NPC library
-            const opts = npcLibrary.map((n, i) =>
-                '<option value="' + i + '">' + n.name.replace(/</g, '&lt;') + (n.cr ? ' (CR ' + n.cr + ')' : '') + '</option>'
-            ).join('');
+            // Split the library into trait-matching candidates (shown first, unrestricted
+            // tap) and everything else (still available, just grouped separately so the
+            // DM isn't blocked from an intentionally unnatural transform).
+            const currentType = sourceTypeOf(c);
+            const matching = [];
+            const other     = [];
+            npcLibrary.forEach((n, i) => {
+                if (n.name === c.name) return; // don't offer transforming into self
+                (isTraitCompatible(currentType, n.type) ? matching : other).push({ n, i });
+            });
+
+            function buildOptions(list) {
+                return list.map(({ n, i }) =>
+                    '<option value="' + i + '">' + n.name.replace(/</g, '&lt;') + (n.cr ? ' (CR ' + n.cr + ')' : '') + '</option>'
+                ).join('');
+            }
+
+            const matchGroup = matching.length > 0
+                ? '<optgroup label="Matching Traits">' + buildOptions(matching) + '</optgroup>'
+                : '';
+            const otherGroup = other.length > 0
+                ? '<optgroup label="Other Monsters">' + buildOptions(other) + '</optgroup>'
+                : '';
 
             return [
                 '<select onchange="if(this.value!==\'\'){applyTransform(', e.id, ',', c.id, ',this.value);this.selectedIndex=0;}"',
                 ' class="bg-gray-900 border border-orange-800 p-2 rounded text-xs w-full mt-2">',
-                '<option value="">🔥 Transform / Enrage into...</option>', opts, '</select>'
+                '<option value="">🔥 Transform / Enrage into...</option>', matchGroup, otherGroup, '</select>'
             ].join('');
+        }
+
+        // Best-effort lookup of a combatant's creature type/traits string for trait
+        // matching. Combatants don't always carry the original NPC's `type` field
+        // directly (it's stored on the library entry, not copied onto every
+        // combatant), so this falls back to looking the name up in npcLibrary.
+        function sourceTypeOf(c) {
+            if (c.creatureType) return c.creatureType;
+            // Fallback for combatants created before this field existed
+            const libEntry = npcLibrary.find(n => n.name === c.name || (c.originalForm && n.name === c.originalForm.name));
+            return libEntry ? libEntry.type : '';
         }
 
         // ── Attack rolling ───────────────────────────────────────────────
@@ -2069,6 +2122,7 @@
                 ailments: [],
                 resistance: src.resistance,
                 cr: src.cr || '?',
+                creatureType: src.type || '', // used for trait-matching transforms (e.g. "humanoid, goblin")
                 turnAttackCount: 0,
             });
             save(); renderEncounters();
