@@ -1297,6 +1297,109 @@
             return '<div>' + (c.ailments.length > 0 ? header : '') + '<div class="space-y-1">' + pills + '</div>' + dropdown + '</div>';
         }
 
+        // ── Boss Transform / Enrage (dropdown similar to Ailments) ─────────
+        // Lets a combatant swap into an alternate form — either a full transformation
+        // into a different NPC library entry (e.g. Werewolf -> Dire Wolf) or a
+        // self-buff "Enrage" preset. The original stats are snapshotted so the DM
+        // can revert at any time; current HP percentage, ailments, and turn state
+        // (action counter, cooldowns) all carry over through the transform.
+        function applyTransform(eId, cId, npcIdx) {
+            if (npcIdx === '' || npcIdx == null) return;
+            const eIdxFound = encounters.findIndex(en => en.id === eId);
+            if (eIdxFound === -1) return;
+            const c = encounters[eIdxFound].combatants.find(co => co.id === cId);
+            if (!c) return;
+            const target = npcLibrary[parseInt(npcIdx)];
+            if (!target) return;
+
+            // Snapshot original stats the first time a transform is applied, so
+            // reverting always goes back to the combatant's true original form
+            // even after multiple transforms in a row.
+            if (!c.originalForm) {
+                c.originalForm = {
+                    name: c.name, attacks: c.attacks, ac: c.ac, perception: c.perception,
+                    resistance: c.resistance, cr: c.cr, xp: c.xp, maxHp: c.maxHp,
+                };
+            }
+
+            // Preserve current HP as a percentage of the OLD maxHp, then apply to the new maxHp
+            const hpPct = c.maxHp > 0 ? c.hp / c.maxHp : 1;
+            const crNum = parseFloat(target.cr) || 0;
+            const newMaxHp = target.baseHp || crToBaseHp(crNum);
+
+            c.transformedInto = target.name;
+            c.name       = c.originalForm.name + ' (' + target.name + ')';
+            c.attacks    = target.attacks || [];
+            c.ac         = target.ac || crToAC(crNum);
+            c.perception = target.perception != null ? target.perception : c.perception;
+            c.resistance = target.resistance || 'None';
+            c.cr         = target.cr || c.cr;
+            c.xp         = target.xpByCR || c.xp;
+            c.maxHp      = newMaxHp;
+            c.hp         = Math.max(c.hp === 0 ? 0 : 1, Math.round(newMaxHp * hpPct));
+            c.rechargeCounters = {}; // new form's attacks start fresh, old cooldown indices don't apply
+
+            save(); renderEncounters();
+            showToast('🔥 ' + c.originalForm.name + ' transforms into ' + target.name + '!');
+        }
+
+        // Reverts a combatant back to their original form, preserving current HP%.
+        function revertTransform(eId, cId) {
+            const eIdxFound = encounters.findIndex(en => en.id === eId);
+            if (eIdxFound === -1) return;
+            const c = encounters[eIdxFound].combatants.find(co => co.id === cId);
+            if (!c || !c.originalForm) return;
+
+            const hpPct = c.maxHp > 0 ? c.hp / c.maxHp : 1;
+            const orig  = c.originalForm;
+
+            c.name       = orig.name;
+            c.attacks    = orig.attacks;
+            c.ac         = orig.ac;
+            c.perception = orig.perception;
+            c.resistance = orig.resistance;
+            c.cr         = orig.cr;
+            c.xp         = orig.xp;
+            c.maxHp      = orig.maxHp;
+            c.hp         = Math.max(c.hp === 0 ? 0 : 1, Math.round(orig.maxHp * hpPct));
+            c.rechargeCounters = {};
+
+            const revertedName = c.transformedInto ? (' from ' + c.transformedInto) : '';
+            delete c.originalForm;
+            delete c.transformedInto;
+
+            save(); renderEncounters();
+            showToast('↩️ ' + orig.name + ' reverts back' + revertedName);
+        }
+
+        function renderTransformControl(e, c) {
+            if (c.type !== 'npc') return '';
+
+            if (c.originalForm) {
+                // Currently transformed — show an active pill with a revert button
+                return [
+                    '<div class="flex gap-1 w-full items-stretch mt-2">',
+                    '<div class="bg-orange-900 rounded px-3 py-2 flex-1 text-left flex justify-between items-center" style="cursor:default">',
+                    '<span class="text-sm font-semibold">🔥 Transformed: ', c.transformedInto, '</span>',
+                    '</div>',
+                    '<button onclick="revertTransform(', e.id, ',', c.id, ')"',
+                    ' class="bg-gray-700 hover:bg-gray-600 px-3 rounded text-gray-300 text-xs font-bold" title="Revert to original form">↩️ Revert</button>',
+                    '</div>'
+                ].join('');
+            }
+
+            // Not transformed — show the dropdown to pick a target form from the NPC library
+            const opts = npcLibrary.map((n, i) =>
+                '<option value="' + i + '">' + n.name.replace(/</g, '&lt;') + (n.cr ? ' (CR ' + n.cr + ')' : '') + '</option>'
+            ).join('');
+
+            return [
+                '<select onchange="if(this.value!==\'\'){applyTransform(', e.id, ',', c.id, ',this.value);this.selectedIndex=0;}"',
+                ' class="bg-gray-900 border border-orange-800 p-2 rounded text-xs w-full mt-2">',
+                '<option value="">🔥 Transform / Enrage into...</option>', opts, '</select>'
+            ].join('');
+        }
+
         // ── Attack rolling ───────────────────────────────────────────────
         function dismissAtkRoll() {
             document.getElementById('atk-roll-overlay').classList.add('hidden');
@@ -2344,6 +2447,7 @@
                 + dmgBannerHtml
                 + attacksHtml
                 + renderAilmentControl(e, c)
+                + renderTransformControl(e, c)
                 + (c.type === 'npc' && !isDead
                     ? '<button onclick="endTurn(' + e.id + ',' + c.id + ')" style="width:100%;margin-top:8px;padding:8px;border-radius:8px;font-weight:700;font-size:12px;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);color:#fca5a5;cursor:pointer">⏹ End Turn (apply ailments &amp; cooldowns)</button>'
                     : (c.type === 'player' && e.activeTurnId === c.id
