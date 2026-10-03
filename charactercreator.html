@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Charting Your Path — The Wyrmfall Accord</title>
+<style>
+  :root { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  *, *::before, *::after { box-sizing: inherit; }
+  html, body { margin: 0; padding: 0; height: 100%; background: #161B22; }
+  #root { min-height: 100%; }
+  button, input, textarea { font: inherit; }
+  ::-webkit-scrollbar { height: 6px; width: 6px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useEffect } = React;
+
+// ---------- DATA ----------
+const ABILS = ["Str", "Dex", "Con", "Int", "Wis", "Cha"];
+const ABIL_NAME = { Str: "Strength", Dex: "Dexterity", Con: "Constitution", Int: "Intelligence", Wis: "Wisdom", Cha: "Charisma" };
+
+const TRAIT_DEFS = {
+  Agile: "Reduces the penalty for attacking again this turn with this weapon.",
+  Finesse: "You can use Dexterity instead of Strength for attack rolls with this weapon.",
+  Thrown: "Throw this weapon as a ranged attack, using Strength to determine the bonus.",
+  Deadly: "On a critical hit, add an extra weapon damage die of the listed size.",
+  Sweep: "Reduces the penalty for hitting a second foe caught in the swing's arc.",
+  Versatile: "Can deal an alternate damage type instead of its listed one.",
+  Fortune: "Lets you roll something twice and keep the better result, or otherwise bends luck your way.",
+  Concentrate: "Requires clear thought to use — effects that disrupt concentration can stop it.",
+  Flourish: "You can use only one flourish action per turn, no matter how many you have.",
+  Stance: "Enters a stance that lasts until you leave it, opening up new options while active.",
+  Incapacitation: "Works better against weaker foes and worse against stronger ones.",
+  Ki: "Powered by a monk's inner reserve of ki points, gained through a ki-granting feat.",
+  Spellshape: "Modifies the next spell you cast, using its own actions rather than the spell's.",
+  Divine: "Tied to the divine tradition of magic — deities and their servants.",
+  Primal: "Tied to the primal tradition of magic — nature's raw, untamed forces.",
+  Healing: "Restores Hit Points or otherwise counteracts harm.",
+};
+
+const ANCESTRIES = [
+  {
+    name: "Dwarf", flavor: "Stonecunning, resilient, clan-bound", fixed: ["Con", "Wis"], speed: 20, hp: 10, hook: "A built-in tie to the Sundered Vaults.",
+    feats: [
+      { name: "Rock Runner", traits: ["Dwarf"], desc: "Ignore Speed penalties from rubble and uneven stone terrain, and no flat check to move through it." },
+      { name: "Stonecunning", traits: ["Dwarf"], desc: "You notice unusual stonework automatically, even without searching, and gain a bonus to find it." },
+    ],
+  },
+  {
+    name: "Elf", flavor: "Long-lived, keen senses, quick reflexes", fixed: ["Dex", "Int"], speed: 30, hp: 6,
+    feats: [
+      { name: "Ancestral Longevity", traits: ["Elf"], desc: "Once per day during downtime, become trained in one skill of your choice until you do this again." },
+      { name: "Elven Instincts", traits: ["Elf"], desc: "A circumstance bonus to initiative rolls, reflecting centuries of quick reflexes." },
+    ],
+  },
+  {
+    name: "Gnome", flavor: "Curious, magically inclined, small", fixed: ["Con", "Cha"], speed: 25, hp: 8,
+    feats: [
+      { name: "First World Magic", traits: ["Gnome", "Primal"], desc: "Gain a primal innate cantrip, a lingering gift from the First World." },
+      { name: "Illusion Sense", traits: ["Gnome"], desc: "A bonus to notice illusions, and you can attempt to disbelieve one even without interacting with it." },
+    ],
+  },
+  {
+    name: "Goblin", flavor: "Scrappy, fire-fascinated, fast-talking", fixed: ["Dex", "Cha"], speed: 25, hp: 6,
+    feats: [
+      { name: "Burn It!", traits: ["Goblin"], desc: "Fire effects you cause deal extra persistent damage, and alchemical fire you use is more effective." },
+      { name: "Very Sneaky", traits: ["Goblin"], desc: "Sneak at full Speed, and move from cover to cover without breaking stealth." },
+    ],
+  },
+  {
+    name: "Halfling", flavor: "Lucky, nimble, hard to pin down", fixed: ["Dex", "Wis"], speed: 25, hp: 6,
+    feats: [
+      { name: "Halfling Luck", traits: ["Halfling", "Fortune"], desc: "Once per day, reroll a failed check as a reaction — no Hero Point required." },
+      { name: "Titan Slinger", traits: ["Halfling"], desc: "Sling attacks against a Large or bigger creature deal an extra damage die." },
+    ],
+  },
+  {
+    name: "Human", flavor: "Adaptable — no fixed ability tendency", fixed: [], flexible: 2, speed: 25, hp: 8, hook: "The most forgiving pick for a first-ever character.",
+    feats: [
+      { name: "Haughty Obstinacy", traits: ["Human"], desc: "A bonus to Will saves against mental effects that try to force you to act against your will." },
+      { name: "Natural Ambition", traits: ["Human"], desc: "Gain an extra 1st-level class feat, on top of your normal one — human adaptability made mechanical." },
+    ],
+  },
+  {
+    name: "Leshy", flavor: "Plant-born, close to nature, unusual diet", fixed: ["Con", "Wis"], speed: 25, hp: 8,
+    feats: [
+      { name: "Leshy Superstition", traits: ["Leshy"], desc: "A status bonus to saves against magic on a success, growing stronger at higher levels." },
+      { name: "Seedpod", traits: ["Leshy"], desc: "Once per day, throw a seedpod that splashes a foe with clinging sap." },
+    ],
+  },
+  {
+    name: "Orc", flavor: "Powerful, tough, ferocious under pressure", fixed: ["Str", "Con"], speed: 25, hp: 10,
+    feats: [
+      { name: "Orc Ferocity", traits: ["Orc"], desc: "Once per day, when you'd be reduced to 0 HP, stay at 1 HP and remain conscious instead." },
+      { name: "Hold Mark", traits: ["Orc"], desc: "A clan-marking grants a minor resistance tied to your clan's tradition and history." },
+    ],
+  },
+  {
+    name: "Tengu", flavor: "Sky-born, sharp-beaked, quick on the wind", fixed: ["Dex", "Wis"], speed: 25, hp: 6, hook: "Flight flavor without homebrew — fits the Aerie Clans.",
+    feats: [
+      { name: "Skyborn Reflexes", traits: ["Tengu"], desc: "A bonus to Acrobatics checks made while airborne or balanced on precarious footing." },
+      { name: "Scavenger's Eye", traits: ["Tengu"], desc: "A bonus to Society or Crafting checks made to identify or salvage useful scavenged materials." },
+    ],
+  },
+  {
+    name: "Strix", flavor: "Winged, night-sighted, watchful", fixed: ["Dex", "Cha"], speed: 25, hp: 8, hook: "Actual flight — a natural fit among gryphon-riders.",
+    feats: [
+      { name: "Nocturnal Sight", traits: ["Strix"], desc: "See in dim light and darkness as though it were bright light, out to a good distance." },
+      { name: "Wind Runner", traits: ["Strix"], desc: "Your Speed increases when gliding or moving through open air on the wing." },
+    ],
+  },
+];
+
+const BACKGROUNDS = [
+  { name: "Guard", ability: "Str", skill: "Intimidation", fit: "Anyone who kept order in Hollow's Reach" },
+  { name: "Hunter", ability: "Wis", skill: "Survival", fit: "Frontier trackers, trappers" },
+  { name: "Scout", ability: "Dex", skill: "Stealth", fit: "Wilderness runners, outriders" },
+  { name: "Herbalist", ability: "Wis", skill: "Nature", fit: "Healers, druids, anyone tied to the land" },
+  { name: "Prospector", ability: "Str", skill: "Athletics", fit: "A tie into the Sundered Vaults' mining life" },
+  { name: "Barkeep", ability: "Cha", skill: "Diplomacy", fit: "Social characters, town locals" },
+  { name: "Emissary", ability: "Cha", skill: "Diplomacy", fit: "A natural in with the Aerie Clans" },
+  { name: "Acolyte", ability: "Wis", skill: "Religion", fit: "Divine casters, temple-raised characters" },
+  { name: "Warrior", ability: "Str", skill: "Athletics", fit: "Ex-soldiers, militia veterans" },
+  { name: "Nomad", ability: "Wis", skill: "Survival", fit: "Outsiders who grew up on the move" },
+  { name: "Street Urchin", ability: "Dex", skill: "Thievery", fit: "Characters with a rougher start in life" },
+  { name: "Scholar", ability: "Int", skill: "Society", fit: "Bookish types, lore-focused characters" },
+];
+
+const CLASSES = [
+  {
+    name: "Alchemist", key: ["Int"], role: "Consumables & versatility", hp: 8, baseSkills: 3,
+    feats: [
+      { name: "Alchemical Familiar", traits: ["Alchemist"], desc: "Gain a small familiar that helps retrieve and manage your alchemical items." },
+      { name: "Quick Bomber", traits: ["Alchemist"], desc: "Draw and throw a bomb as a single action instead of two." },
+    ],
+  },
+  {
+    name: "Barbarian", key: ["Str"], role: "Melee striker", hp: 12, baseSkills: 3,
+    feats: [
+      { name: "Intimidating Glare", traits: ["Barbarian"], desc: "Your Demoralize works through Intimidation alone with just a glare — no shared language needed." },
+      { name: "Raging Intimidation", traits: ["Barbarian"], desc: "Demoralize while raging, even without speaking a word." },
+    ],
+  },
+  {
+    name: "Bard", key: ["Cha"], role: "Support caster", hp: 8, baseSkills: 4, auto: "Occultism",
+    feats: [
+      { name: "Lingering Composition", traits: ["Bard", "Concentrate"], desc: "Extend the duration of your next composition cantrip." },
+      { name: "Well-Versed", traits: ["Bard"], desc: "A bonus to saves against auditory, illusion, linguistic, sonic, and visual effects." },
+    ],
+  },
+  {
+    name: "Champion", key: ["Str", "Dex"], role: "Melee defender", hp: 10, baseSkills: 2,
+    feats: [
+      { name: "Shield Warden", traits: ["Champion"], desc: "Extend your raised shield's protection to block damage for an adjacent ally too." },
+      { name: "Ranged Reprisal", traits: ["Champion"], desc: "Your Champion's Reaction can punish a retreating or ally-striking foe, even at range." },
+    ],
+  },
+  {
+    name: "Cleric", key: ["Wis"], role: "Divine caster", hp: 8, baseSkills: 2, auto: "Religion",
+    feats: [
+      { name: "Communal Healing", traits: ["Cleric", "Divine", "Healing"], desc: "When your Heal spell restores an ally's Hit Points, you recover a small amount of your own HP too." },
+      { name: "Domain Initiate", traits: ["Cleric", "Divine"], desc: "Gain a domain spell tied to your deity's portfolio, usable once per day." },
+    ],
+  },
+  {
+    name: "Druid", key: ["Wis"], role: "Primal caster", hp: 8, baseSkills: 2, auto: "Nature",
+    feats: [
+      { name: "Animal Companion", traits: ["Druid"], desc: "Gain a loyal animal companion that fights and travels at your side." },
+      { name: "Widen Spell", traits: ["Druid", "Concentrate", "Spellshape"], desc: "Increase the area of an area spell you're about to cast." },
+    ],
+  },
+  {
+    name: "Fighter", key: ["Str", "Dex"], role: "Weapon master", hp: 10, baseSkills: 3,
+    feats: [
+      { name: "Reactive Shield", traits: ["Fighter"], desc: "Raise a Shield as a reaction instead of spending your own action on it." },
+      { name: "Point-Blank Shot", traits: ["Fighter", "Stance"], desc: "A stance where ranged weapons ignore the first range penalty and hit harder up close." },
+    ],
+  },
+  {
+    name: "Monk", key: ["Str", "Dex"], role: "Martial artist", hp: 10, baseSkills: 4,
+    feats: [
+      { name: "Stunning Fist", traits: ["Monk", "Incapacitation"], desc: "Your Flurry of Blows can stun a foe that critically fails its save." },
+      { name: "Ki Rush", traits: ["Monk", "Concentrate", "Ki"], desc: "Spend a point of ki to blur into motion, gaining extra Speed and a defensive edge." },
+    ],
+  },
+  {
+    name: "Ranger", key: ["Str", "Dex"], role: "Hunter", hp: 10, baseSkills: 6,
+    feats: [
+      { name: "Hunted Shot", traits: ["Ranger", "Flourish"], desc: "Make two ranged Strikes against your hunted prey in a single action." },
+      { name: "Monster Hunter", traits: ["Ranger"], desc: "Study a foe to learn its weaknesses, sharing that knowledge with your allies." },
+    ],
+  },
+  {
+    name: "Rogue", key: ["Dex"], role: "Skill & precision striker", hp: 8, baseSkills: 7,
+    feats: [
+      { name: "Nimble Dodge", traits: ["Rogue"], desc: "Reaction: gain a +2 circumstance bonus to AC against an attack, before you know if it hits." },
+      { name: "Twin Feint", traits: ["Rogue", "Flourish"], desc: "Attack with two weapons in one motion, guaranteeing your sneak attack lands on the second strike." },
+    ],
+  },
+  {
+    name: "Sorcerer", key: ["Cha"], role: "Innate caster", hp: 6, baseSkills: 3,
+    feats: [
+      { name: "Counterspell", traits: ["Sorcerer", "Concentrate"], desc: "Ready a matching spell to unravel one being cast right in front of you." },
+      { name: "Signature Spells", traits: ["Sorcerer"], desc: "Heighten a chosen spell to any level you can cast, regardless of the level you prepared it at." },
+    ],
+  },
+  {
+    name: "Wizard", key: ["Int"], role: "Studied caster", hp: 6, baseSkills: 2, auto: "Arcana",
+    feats: [
+      { name: "Reach Spell", traits: ["Wizard", "Concentrate", "Spellshape"], desc: "Cast a spell as though you were standing up to 30 feet closer to the target than you are." },
+      { name: "Counterspell", traits: ["Wizard", "Concentrate"], desc: "Ready a matching spell to unravel one being cast right in front of you." },
+    ],
+  },
+];
+
+const SKILLS = ["Acrobatics", "Arcana", "Athletics", "Crafting", "Deception", "Diplomacy", "Intimidation", "Medicine", "Nature", "Occultism", "Performance", "Religion", "Society", "Stealth", "Survival", "Thievery"];
+
+const WEAPONS = [
+  { name: "Dagger", dmg: "1d4 P", traits: ["Agile", "Finesse", "Thrown"] },
+  { name: "Mace", dmg: "1d6 B", traits: [] },
+  { name: "Spear", dmg: "1d6 P", traits: ["Thrown"] },
+  { name: "Sickle", dmg: "1d4 S", traits: ["Agile", "Finesse"] },
+  { name: "Shortbow", dmg: "1d6 P", traits: ["Deadly"] },
+  { name: "Longsword", dmg: "1d8 S", traits: ["Versatile"] },
+  { name: "Rapier", dmg: "1d6 P", traits: ["Deadly", "Finesse"] },
+  { name: "Battle Axe", dmg: "1d8 S", traits: ["Sweep"] },
+  { name: "Warhammer", dmg: "1d8 B", traits: [] },
+  { name: "Longbow", dmg: "1d8 P", traits: ["Deadly"] },
+];
+
+const ARMORS = [
+  { name: "None (unarmored)", cat: "Unarmored", cap: 99, bonus: 0 },
+  { name: "Leather", cat: "Light", cap: 4, bonus: 1 },
+  { name: "Studded Leather", cat: "Light", cap: 3, bonus: 2 },
+  { name: "Chain Shirt", cat: "Light", cap: 3, bonus: 2 },
+  { name: "Hide", cat: "Medium", cap: 2, bonus: 3 },
+  { name: "Breastplate", cat: "Medium", cap: 1, bonus: 4 },
+  { name: "Full Plate", cat: "Heavy", cap: 0, bonus: 6 },
+];
+
+const SKILL_ABIL = { Acrobatics: "Dex", Arcana: "Int", Athletics: "Str", Crafting: "Int", Deception: "Cha", Diplomacy: "Cha", Intimidation: "Cha", Medicine: "Wis", Nature: "Wis", Occultism: "Int", Performance: "Cha", Religion: "Wis", Society: "Int", Stealth: "Dex", Survival: "Wis", Thievery: "Dex" };
+const ANCESTRY_SIZE = { Dwarf: "Medium", Elf: "Medium", Gnome: "Small", Goblin: "Small", Halfling: "Small", Human: "Medium", Leshy: "Small", Orc: "Medium", Tengu: "Medium", Strix: "Medium" };
+
+const boxStyle = { border: "1.5px solid #111", borderRadius: 6, padding: "6px 8px", textAlign: "center" };
+const labelStyle = { fontSize: 9, letterSpacing: 0.5, color: "#555" };
+const bigValStyle = { fontSize: 18, fontWeight: 700 };
+
+const FEAT_LEVELS = [
+  { lvl: 1, gains: "Ancestry feat, Class feat" },
+  { lvl: 2, gains: "Skill feat, Class feat" },
+  { lvl: 3, gains: "General feat, Skill increase" },
+  { lvl: 4, gains: "Skill feat, Class feat" },
+  { lvl: 5, gains: "Ability boosts, Ancestry feat, Skill increase" },
+  { lvl: 6, gains: "Skill feat, Class feat" },
+  { lvl: 7, gains: "General feat, Skill increase" },
+  { lvl: 8, gains: "Skill feat, Class feat" },
+  { lvl: 9, gains: "Ancestry feat, Skill increase" },
+  { lvl: 10, gains: "Ability boosts, Skill feat, Class feat" },
+];
+
+const STEPS = [
+  { key: "concept", label: "Concept", icon: "🪶" },
+  { key: "ancestry", label: "Ancestry", icon: "⛰️" },
+  { key: "background", label: "Background", icon: "📜" },
+  { key: "class", label: "Class", icon: "⚔️" },
+  { key: "feats", label: "Feats", icon: "🏅" },
+  { key: "abilities", label: "Ability Scores", icon: "✨" },
+  { key: "skills", label: "Skills", icon: "🧭" },
+  { key: "gear", label: "Gear", icon: "🎒" },
+  { key: "finish", label: "Finishing Touches", icon: "🛡️" },
+];
+
+const mod = (score) => Math.floor((score - 10) / 2);
+const fmtMod = (m) => (m >= 0 ? `+${m}` : `${m}`);
+const boost = (score) => (score >= 18 ? score + 1 : score + 2);
+
+// ---------- UI PRIMITIVES ----------
+const Card = ({ children, style }) => (
+  <div style={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 14, padding: "18px", ...style }}>{children}</div>
+);
+
+const Pill = ({ active, onClick, children, sub }) => (
+  <button
+    onClick={onClick}
+    style={{
+      textAlign: "left", width: "100%", padding: "12px 14px", borderRadius: 12,
+      border: `1px solid ${active ? "var(--ember)" : "var(--border)"}`,
+      background: active ? "rgba(203,104,67,0.14)" : "var(--panel2)", color: "var(--text)",
+      cursor: "pointer", marginBottom: 8, transition: "border-color 120ms ease, background 120ms ease",
+    }}
+  >
+    <div style={{ fontFamily: "var(--serif)", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      {children}
+      {active && <span style={{ color: "var(--ember)" }}>✓</span>}
+    </div>
+    {sub && <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 3, lineHeight: 1.4 }}>{sub}</div>}
+  </button>
+);
+
+const SectionLabel = ({ children }) => (
+  <div style={{ fontFamily: "var(--serif)", fontSize: 22, color: "var(--text)", marginBottom: 4 }}>{children}</div>
+);
+
+const AbilRow = ({ code, score }) => (
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+    <span style={{ color: "var(--dim)", fontSize: 14 }}>{ABIL_NAME[code]}</span>
+    <span style={{ fontFamily: "var(--serif)", fontSize: 17 }}>
+      {score} <span style={{ color: "var(--gold)" }}>({fmtMod(mod(score))})</span>
+    </span>
+  </div>
+);
+
+const TraitTag = ({ t }) => (
+  <span style={{
+    fontSize: 10.5, padding: "2px 7px", borderRadius: 6, background: "rgba(111,155,176,0.16)",
+    border: "1px solid var(--sky)", color: "var(--sky)", letterSpacing: 0.2,
+  }}>{t}</span>
+);
+
+const FeatCard = ({ feat, active, onClick }) => (
+  <button onClick={onClick} style={{
+    textAlign: "left", width: "100%", padding: "12px 14px", borderRadius: 12,
+    border: `1px solid ${active ? "var(--ember)" : "var(--border)"}`,
+    background: active ? "rgba(203,104,67,0.14)" : "var(--panel2)", color: "var(--text)",
+    cursor: "pointer", marginBottom: 8, display: "block",
+  }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+      <span style={{ fontFamily: "var(--serif)", fontSize: 15.5 }}>{feat.name}</span>
+      {active && <span style={{ color: "var(--ember)", flexShrink: 0 }}>✓</span>}
+    </div>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 5, marginBottom: 5 }}>
+      {feat.traits.map((t) => <TraitTag key={t} t={t} />)}
+    </div>
+    <div style={{ fontSize: 12.5, color: "var(--dim)", lineHeight: 1.4 }}>{feat.desc}</div>
+  </button>
+);
+
+const TraitGlossary = ({ traits }) => {
+  const uniq = [...new Set(traits)].filter((t) => TRAIT_DEFS[t]);
+  if (uniq.length === 0) return null;
+  return (
+    <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--sky)", marginBottom: 8 }}>
+        <span>ℹ️</span> Trait glossary
+      </div>
+      {uniq.map((t) => (
+        <div key={t} style={{ fontSize: 12, marginBottom: 5, lineHeight: 1.4 }}>
+          <b style={{ color: "var(--text)" }}>{t}</b> <span style={{ color: "var(--dim)" }}>— {TRAIT_DEFS[t]}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ---------- MAIN ----------
+function CharacterCreator() {
+  const [step, setStep] = useState(0);
+  const [concept, setConcept] = useState({ name: "", who: "", want: "", solve: "" });
+  const [ancestryIdx, setAncestryIdx] = useState(null);
+  const [heritage, setHeritage] = useState("");
+  const [humanPicks, setHumanPicks] = useState([]);
+  const [ancestryFree, setAncestryFree] = useState(null);
+  const [bgIdx, setBgIdx] = useState(null);
+  const [bgFree, setBgFree] = useState(null);
+  const [classIdx, setClassIdx] = useState(null);
+  const [classKey, setClassKey] = useState(null);
+  const [ancestryFeat, setAncestryFeat] = useState(null);
+  const [classFeat, setClassFeat] = useState(null);
+  const [freeBoosts, setFreeBoosts] = useState([]);
+  const [skillsChosen, setSkillsChosen] = useState([]);
+  const [weapon, setWeapon] = useState(null);
+  const [armor, setArmor] = useState(ARMORS[0]);
+
+  const ancestry = ancestryIdx !== null ? ANCESTRIES[ancestryIdx] : null;
+  const background = bgIdx !== null ? BACKGROUNDS[bgIdx] : null;
+  const cls = classIdx !== null ? CLASSES[classIdx] : null;
+
+  const ancestryAbils = ancestry ? (ancestry.flexible ? humanPicks : ancestry.fixed) : [];
+
+  useEffect(() => { setAncestryFree(null); setHumanPicks([]); setAncestryFeat(null); }, [ancestryIdx]);
+  useEffect(() => { setBgFree(null); }, [bgIdx]);
+  useEffect(() => { setClassKey(cls && cls.key.length === 1 ? cls.key[0] : null); setClassFeat(null); }, [classIdx]);
+
+  const scores = useMemo(() => {
+    const s = { Str: 10, Dex: 10, Con: 10, Int: 10, Wis: 10, Cha: 10 };
+    if (ancestry) {
+      ancestryAbils.forEach((a) => a && (s[a] = boost(s[a])));
+      if (ancestryFree) s[ancestryFree] = boost(s[ancestryFree]);
+    }
+    if (background) {
+      s[background.ability] = boost(s[background.ability]);
+      if (bgFree) s[bgFree] = boost(s[bgFree]);
+    }
+    if (classKey) s[classKey] = boost(s[classKey]);
+    freeBoosts.forEach((a) => a && (s[a] = boost(s[a])));
+    return s;
+  }, [ancestry, ancestryAbils, ancestryFree, background, bgFree, classKey, freeBoosts]);
+
+  const intMod = mod(scores.Int);
+  const skillPool = cls ? Math.max(0, cls.baseSkills + intMod) : 0;
+  const preTrained = new Set([background?.skill, cls?.auto].filter(Boolean));
+  const totalTrained = skillPool + preTrained.size;
+
+  const hp = ancestry && cls ? ancestry.hp + cls.hp + mod(scores.Con) : null;
+  const acItem = armor ? armor.bonus : 0;
+  const dexForAc = armor ? Math.min(mod(scores.Dex), armor.cap) : mod(scores.Dex);
+  const ac = 10 + dexForAc + 3 + acItem;
+  const perception = 3 + mod(scores.Wis);
+  const fort = 3 + mod(scores.Con);
+  const reflex = 3 + mod(scores.Dex);
+  const will = 3 + mod(scores.Wis);
+  const keyMod = classKey ? mod(scores[classKey]) : 0;
+  const classDC = 10 + 3 + keyMod;
+
+  const canAdvance = [
+    concept.who.trim().length > 0,
+    ancestry && (ancestry.flexible ? humanPicks.length === 2 : true) && ancestryFree,
+    background && bgFree,
+    cls && classKey,
+    ancestryFeat && classFeat,
+    freeBoosts.filter(Boolean).length === 4 && new Set(freeBoosts).size === 4,
+    skillsChosen.length === skillPool,
+    true,
+    true,
+  ][step];
+
+  const next = () => setStep((s) => Math.min(STEPS.length - 1, s + 1));
+  const back = () => setStep((s) => Math.max(0, s - 1));
+  const restart = () => {
+    setStep(0); setConcept({ name: "", who: "", want: "", solve: "" });
+    setAncestryIdx(null); setHeritage(""); setHumanPicks([]); setAncestryFree(null);
+    setBgIdx(null); setBgFree(null); setClassIdx(null); setClassKey(null);
+    setAncestryFeat(null); setClassFeat(null);
+    setFreeBoosts([]); setSkillsChosen([]); setWeapon(null); setArmor(ARMORS[0]);
+  };
+
+  const toggleFreeBoost = (a) => {
+    setFreeBoosts((prev) => {
+      if (prev.includes(a)) return prev.filter((x) => x !== a);
+      if (prev.length >= 4) return prev;
+      return [...prev, a];
+    });
+  };
+
+  const toggleSkill = (s) => {
+    setSkillsChosen((prev) => {
+      if (prev.includes(s)) return prev.filter((x) => x !== s);
+      if (prev.length >= skillPool) return prev;
+      return [...prev, s];
+    });
+  };
+
+  const featTraitPool = [...(ancestry?.feats.flatMap((f) => f.traits) || []), ...(cls?.feats.flatMap((f) => f.traits) || [])];
+  const weaponTraitPool = WEAPONS.flatMap((w) => w.traits);
+
+  // Printable sheet derived values
+  const trainedSet = new Set([...preTrained, ...skillsChosen]);
+  const skillRows = SKILLS.map((s) => {
+    const ab = SKILL_ABIL[s];
+    const trained = trainedSet.has(s);
+    return { name: s, ability: ab, trained, val: (trained ? 3 : 0) + mod(scores[ab]) };
+  });
+  const size = ancestry ? ANCESTRY_SIZE[ancestry.name] : "Medium";
+  const isRanged = weapon && ["Shortbow", "Longbow"].includes(weapon.name);
+  const useDexToHit = weapon && (isRanged || (weapon.traits.includes("Finesse") && mod(scores.Dex) > mod(scores.Str)));
+  const atkAbilMod = weapon ? mod(scores[useDexToHit ? "Dex" : "Str"]) : 0;
+  const atkBonus = weapon ? 3 + atkAbilMod : null;
+  const dmgBonus = weapon ? (isRanged ? 0 : atkAbilMod) : null;
+  const [dmgDie, dmgType] = weapon ? weapon.dmg.split(" ") : ["", ""];
+
+  return (
+    <div style={{
+      "--bg": "#161B22", "--panel": "#1F2733", "--panel2": "#26303D", "--text": "#E7E2D3",
+      "--dim": "#93A0AC", "--ember": "#CB6843", "--sky": "#6F9BB0", "--gold": "#C7A15D", "--border": "#333F4E",
+      "--serif": "'Iowan Old Style','Palatino Linotype',Georgia,serif",
+      "--sans": "'Avenir Next','Segoe UI',Helvetica,Arial,sans-serif",
+      background: "var(--bg)", color: "var(--text)", fontFamily: "var(--sans)",
+      minHeight: "100vh", padding: "16px 14px 90px", maxWidth: 480, margin: "0 auto", position: "relative", boxSizing: "border-box",
+    }}>
+      <style>{`
+        @media print {
+          body { background: #fff !important; }
+          .no-print { display: none !important; }
+          .sheet-wrap { box-shadow: none !important; padding: 0 !important; }
+          .sheet-page { border: none !important; }
+          @page { size: letter; margin: 0.4in; }
+        }
+      `}</style>
+      <div className="no-print" style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 12, letterSpacing: 0.4, color: "var(--sky)" }}>The Wyrmfall Accord</div>
+        <div style={{ fontFamily: "var(--serif)", fontSize: 26, marginTop: 2 }}>Charting Your Path</div>
+      </div>
+
+      <div className="no-print" style={{ display: "flex", overflowX: "auto", gap: 6, marginBottom: 18, paddingBottom: 4 }}>
+        {STEPS.map((s, i) => {
+          const done = i < step, current = i === step;
+          return (
+            <button key={s.key} onClick={() => i <= step && setStep(i)}
+              style={{
+                flex: "0 0 auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                background: "none", border: "none", cursor: i <= step ? "pointer" : "default", padding: "2px 6px",
+                opacity: i > step ? 0.4 : 1,
+              }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                background: current ? "var(--ember)" : done ? "var(--gold)" : "var(--panel2)",
+                border: `1px solid ${current || done ? "transparent" : "var(--border)"}`, fontSize: 14,
+              }}>
+                {done ? <span style={{ color: "#161B22" }}>✓</span> : <span>{s.icon}</span>}
+              </div>
+              <span style={{ fontSize: 9, color: current ? "var(--text)" : "var(--dim)", whiteSpace: "nowrap" }}>{s.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {step === 0 && (
+        <Card>
+          <SectionLabel>Who are they, before the rulebook?</SectionLabel>
+          <p style={{ color: "var(--dim)", fontSize: 13.5, marginTop: 2, marginBottom: 14 }}>Three questions point you toward everything else.</p>
+          <label style={{ fontSize: 12.5, color: "var(--sky)" }}>Character name</label>
+          <input value={concept.name} onChange={(e) => setConcept({ ...concept, name: e.target.value })}
+            placeholder="What do they go by?" style={inputStyle} />
+          <label style={{ fontSize: 12.5, color: "var(--sky)" }}>Who are they? Where from, what did they do before Hollow's Reach?</label>
+          <textarea value={concept.who} onChange={(e) => setConcept({ ...concept, who: e.target.value })}
+            placeholder="One or two sentences..." style={{ ...inputStyle, height: 64, resize: "vertical" }} />
+          <label style={{ fontSize: 12.5, color: "var(--sky)" }}>What do they want?</label>
+          <textarea value={concept.want} onChange={(e) => setConcept({ ...concept, want: e.target.value })}
+            placeholder="Fortune, a lost relative, redemption, a name for themselves..." style={{ ...inputStyle, height: 52, resize: "vertical" }} />
+          <label style={{ fontSize: 12.5, color: "var(--sky)" }}>How do they solve problems?</label>
+          <textarea value={concept.solve} onChange={(e) => setConcept({ ...concept, solve: e.target.value })}
+            placeholder="Combat-first, talk-first, sneak-first, something in between..." style={{ ...inputStyle, height: 52, resize: "vertical" }} />
+        </Card>
+      )}
+
+      {step === 1 && (
+        <Card>
+          <SectionLabel>Ancestry & Heritage</SectionLabel>
+          <p style={{ color: "var(--dim)", fontSize: 13.5, marginTop: 2, marginBottom: 14 }}>Sets your base ability boosts, HP, and Speed.</p>
+          {ANCESTRIES.map((a, i) => (
+            <Pill key={a.name} active={ancestryIdx === i} onClick={() => setAncestryIdx(i)}
+              sub={`${a.flavor}${a.hook ? " — " + a.hook : ""} · Speed ${a.speed}ft · +${a.hp} HP`}>
+              {a.name}
+            </Pill>
+          ))}
+          {ancestry && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <label style={{ fontSize: 12.5, color: "var(--sky)" }}>Heritage (flavor — a clan, tradition, or variant within {ancestry.name})</label>
+              <input value={heritage} onChange={(e) => setHeritage(e.target.value)} placeholder="e.g. Rock Dwarf, Hill Halfling..." style={inputStyle} />
+
+              {ancestry.flexible ? (
+                <>
+                  <div style={{ fontSize: 12.5, color: "var(--sky)", marginTop: 6, marginBottom: 6 }}>Pick 2 flexible boosts</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {ABILS.map((a) => (
+                      <Chip key={a} active={humanPicks.includes(a)} onClick={() => {
+                        setHumanPicks((prev) => prev.includes(a) ? prev.filter(x => x !== a) : prev.length < 2 ? [...prev, a] : prev);
+                      }}>{a}</Chip>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: 13, color: "var(--dim)", margin: "6px 0" }}>Fixed boosts: <b style={{ color: "var(--text)" }}>{ancestry.fixed.map(a => ABIL_NAME[a]).join(", ")}</b></div>
+              )}
+
+              <div style={{ fontSize: 12.5, color: "var(--sky)", marginTop: 10, marginBottom: 6 }}>Free boost (any ability not already boosted above)</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {ABILS.filter(a => !ancestryAbils.includes(a)).map((a) => (
+                  <Chip key={a} active={ancestryFree === a} onClick={() => setAncestryFree(a)}>{a}</Chip>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {step === 2 && (
+        <Card>
+          <SectionLabel>Background</SectionLabel>
+          <p style={{ color: "var(--dim)", fontSize: 13.5, marginTop: 2, marginBottom: 14 }}>What they did before adventuring. Grants two ability boosts, one trained skill, one skill feat.</p>
+          {BACKGROUNDS.map((b, i) => (
+            <Pill key={b.name} active={bgIdx === i} onClick={() => setBgIdx(i)}
+              sub={`${b.fit} · Trained: ${b.skill} · Boost: ${ABIL_NAME[b.ability]}`}>
+              {b.name}
+            </Pill>
+          ))}
+          {background && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 12.5, color: "var(--sky)", marginBottom: 6 }}>Free boost (any ability except {ABIL_NAME[background.ability]})</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {ABILS.filter(a => a !== background.ability).map((a) => (
+                  <Chip key={a} active={bgFree === a} onClick={() => setBgFree(a)}>{a}</Chip>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {step === 3 && (
+        <Card>
+          <SectionLabel>Class</SectionLabel>
+          <p style={{ color: "var(--dim)", fontSize: 13.5, marginTop: 2, marginBottom: 14 }}>Your core role. This drives your key ability boost and most of your skill count.</p>
+          {CLASSES.map((c, i) => (
+            <Pill key={c.name} active={classIdx === i} onClick={() => setClassIdx(i)}
+              sub={`${c.role} · Key: ${c.key.map(k => ABIL_NAME[k]).join(" or ")} · HP/lvl ${c.hp}${c.auto ? " · Auto-trained: " + c.auto : ""}`}>
+              {c.name}
+            </Pill>
+          ))}
+          {cls && cls.key.length > 1 && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 12.5, color: "var(--sky)", marginBottom: 6 }}>Choose your key ability</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {cls.key.map((k) => <Chip key={k} active={classKey === k} onClick={() => setClassKey(k)}>{ABIL_NAME[k]}</Chip>)}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {step === 4 && (
+        <Card>
+          <SectionLabel>Feats</SectionLabel>
+          <p style={{ color: "var(--dim)", fontSize: 13.5, marginTop: 2, marginBottom: 14 }}>
+            At level 1 you gain one <b style={{ color: "var(--text)" }}>Ancestry feat</b> and one <b style={{ color: "var(--text)" }}>Class feat</b>. Every feat belongs to exactly one category — check it before you pick. Names and effects here are illustrative; confirm exact wording against your rulebook or Pathbuilder.
+          </p>
+
+          {!ancestry || !cls ? (
+            <div style={{ fontSize: 13.5, color: "var(--dim)", padding: "10px 0" }}>Pick an Ancestry and a Class first — their feats will show up here.</div>
+          ) : (
+            <>
+              <div style={{ fontFamily: "var(--serif)", fontSize: 16, marginBottom: 8 }}>Ancestry feat — {ancestry.name}</div>
+              {ancestry.feats.map((f) => (
+                <FeatCard key={f.name} feat={f} active={ancestryFeat?.name === f.name} onClick={() => setAncestryFeat(f)} />
+              ))}
+
+              <div style={{ fontFamily: "var(--serif)", fontSize: 16, marginTop: 16, marginBottom: 8 }}>Class feat — {cls.name}</div>
+              {cls.feats.map((f) => (
+                <FeatCard key={f.name} feat={f} active={classFeat?.name === f.name} onClick={() => setClassFeat(f)} />
+              ))}
+
+              <TraitGlossary traits={featTraitPool} />
+
+              <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+                <div style={{ fontSize: 12.5, color: "var(--sky)", marginBottom: 8 }}>What's still ahead (levels 2–10)</div>
+                {FEAT_LEVELS.slice(1).map((f) => (
+                  <div key={f.lvl} style={{ display: "flex", gap: 10, fontSize: 12.5, padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ color: "var(--gold)", width: 18, flexShrink: 0 }}>{f.lvl}</span>
+                    <span style={{ color: "var(--dim)" }}>{f.gains}</span>
+                  </div>
+                ))}
+                <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 8, lineHeight: 1.5 }}>
+                  Skill feats need Trained proficiency in the relevant skill; General feats are open to anyone. Re-check the category a feat asks for every time you level up.
+                </div>
+              </div>
+            </>
+          )}
+        </Card>
+      )}
+
+      {step === 5 && (
+        <Card>
+          <SectionLabel>Ability Scores</SectionLabel>
+          <p style={{ color: "var(--dim)", fontSize: 13.5, marginTop: 2, marginBottom: 14 }}>
+            Four free boosts, assigned to four <i>different</i> abilities in this batch. Ancestry, background, and class boosts are already applied.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+            {ABILS.map((a) => (
+              <Chip key={a} active={freeBoosts.includes(a)} onClick={() => toggleFreeBoost(a)}
+                disabled={!freeBoosts.includes(a) && freeBoosts.length >= 4}>{a}</Chip>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--dim)", marginBottom: 10 }}>{freeBoosts.length}/4 selected</div>
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8 }}>
+            {ABILS.map((a) => <AbilRow key={a} code={a} score={scores[a]} />)}
+          </div>
+        </Card>
+      )}
+
+      {step === 6 && (
+        <Card>
+          <SectionLabel>Skills</SectionLabel>
+          <p style={{ color: "var(--dim)", fontSize: 13.5, marginTop: 2, marginBottom: 8 }}>
+            {cls?.name || "Your class"}'s base skills ({cls?.baseSkills ?? "–"}) + Intelligence mod ({fmtMod(intMod)}) = <b style={{ color: "var(--text)" }}>{skillPool}</b> to pick freely.
+          </p>
+          {preTrained.size > 0 && (
+            <p style={{ fontSize: 13, color: "var(--gold)", marginBottom: 12 }}>
+              Already trained automatically: {[...preTrained].join(", ")}
+            </p>
+          )}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {SKILLS.filter(s => !preTrained.has(s)).map((s) => (
+              <Chip key={s} active={skillsChosen.includes(s)} onClick={() => toggleSkill(s)}
+                disabled={!skillsChosen.includes(s) && skillsChosen.length >= skillPool}>{s}</Chip>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 12 }}>{skillsChosen.length}/{skillPool} selected · {totalTrained} trained total with automatics</div>
+        </Card>
+      )}
+
+      {step === 7 && (
+        <Card>
+          <SectionLabel>Gear</SectionLabel>
+          <p style={{ color: "var(--dim)", fontSize: 13.5, marginTop: 2, marginBottom: 14 }}>Starting wealth: 15 gp. Don't overthink it — treasure earned in play covers the rest.</p>
+          <div style={{ fontSize: 12.5, color: "var(--sky)", marginBottom: 6 }}>Primary weapon</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+            {WEAPONS.map((w) => (
+              <Chip key={w.name} active={weapon?.name === w.name} onClick={() => setWeapon(w)}>{w.name}</Chip>
+            ))}
+          </div>
+          {weapon && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 13, color: "var(--dim)" }}>{weapon.dmg}</span>
+              {weapon.traits.map((t) => <TraitTag key={t} t={t} />)}
+              {weapon.traits.length === 0 && <span style={{ fontSize: 12, color: "var(--dim)" }}>No special traits</span>}
+            </div>
+          )}
+          <div style={{ fontSize: 12.5, color: "var(--sky)", marginBottom: 6 }}>Armor</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {ARMORS.map((a) => (
+              <Chip key={a.name} active={armor?.name === a.name} onClick={() => setArmor(a)}>{a.name}</Chip>
+            ))}
+          </div>
+          <div style={{ fontSize: 13, color: "var(--dim)", marginTop: 16, lineHeight: 1.6 }}>
+            Plus: an adventurer's pack (rope, rations, bedroll, waterskin, flint & steel), and any class-specific essentials (spellbook, holy symbol, thieves' tools) — grab those in your rulebook.
+          </div>
+          <TraitGlossary traits={weaponTraitPool} />
+        </Card>
+      )}
+
+      {step === 8 && (
+        <div>
+          <div className="no-print" style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <button onClick={() => window.print()} style={{
+              flex: 1, padding: "12px", borderRadius: 12, border: "none", background: "var(--ember)", color: "#161B22",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontWeight: 600, cursor: "pointer", fontSize: 13.5,
+            }}>
+              <span>🖨</span> Print Character Sheet
+            </button>
+          </div>
+
+          <div className="sheet-wrap" style={{ background: "#fff", borderRadius: 10, padding: 14, marginBottom: 12 }}>
+            <div className="sheet-page" style={{ border: "2px solid #111", borderRadius: 4, padding: 14, color: "#111", fontFamily: "Helvetica, Arial, sans-serif" }}>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid #111", paddingBottom: 8, marginBottom: 10, gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 700 }}>{concept.name || "Unnamed Character"}</div>
+                  <div style={{ fontSize: 10.5, color: "#555" }}>The Wyrmfall Accord · Level 1</div>
+                </div>
+                <div style={{ textAlign: "right", fontSize: 10.5, lineHeight: 1.6 }}>
+                  <div>Ancestry: <b>{ancestry?.name || "—"}{heritage ? ` (${heritage})` : ""}</b></div>
+                  <div>Size: <b>{size}</b> · Background: <b>{background?.name || "—"}</b></div>
+                  <div>Class: <b>{cls?.name || "—"}</b></div>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6, marginBottom: 10 }}>
+                {ABILS.map((a) => (
+                  <div key={a} style={boxStyle}>
+                    <div style={labelStyle}>{a.toUpperCase()}</div>
+                    <div style={bigValStyle}>{fmtMod(mod(scores[a]))}</div>
+                    <div style={{ fontSize: 9, color: "#777" }}>{scores[a]}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
+                <div style={boxStyle}><div style={labelStyle}>Perception</div><div style={bigValStyle}>{fmtMod(perception)}</div></div>
+                <div style={boxStyle}><div style={labelStyle}>Class DC</div><div style={bigValStyle}>{classDC}</div></div>
+                <div style={boxStyle}><div style={labelStyle}>Speed</div><div style={bigValStyle}>{ancestry?.speed ?? "—"} ft</div></div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1.3fr", gap: 8, marginBottom: 8 }}>
+                <div style={boxStyle}><div style={labelStyle}>Fortitude</div><div style={bigValStyle}>{fmtMod(fort)}</div></div>
+                <div style={boxStyle}><div style={labelStyle}>Reflex</div><div style={bigValStyle}>{fmtMod(reflex)}</div></div>
+                <div style={boxStyle}><div style={labelStyle}>Will</div><div style={bigValStyle}>{fmtMod(will)}</div></div>
+                <div style={boxStyle}><div style={labelStyle}>Armor Class</div><div style={bigValStyle}>{ac}</div></div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+                <div style={boxStyle}><div style={labelStyle}>HP Max</div><div style={bigValStyle}>{hp}</div></div>
+                <div style={boxStyle}><div style={labelStyle}>HP Current</div><div style={{ ...bigValStyle, color: "#bbb" }}>____</div></div>
+                <div style={boxStyle}><div style={labelStyle}>Temp HP</div><div style={{ ...bigValStyle, color: "#bbb" }}>____</div></div>
+              </div>
+
+              <div style={{ fontSize: 11, fontWeight: 700, borderBottom: "1px solid #111", marginBottom: 4, paddingBottom: 2 }}>SKILLS</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px", marginBottom: 14, fontSize: 11 }}>
+                {skillRows.map((r) => (
+                  <div key={r.name} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", borderBottom: "1px dotted #999" }}>
+                    <span>{r.trained ? "●" : "○"} {r.name} <span style={{ color: "#888" }}>({r.ability})</span></span>
+                    <b>{fmtMod(r.val)}</b>
+                  </div>
+                ))}
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", borderBottom: "1px dotted #999" }}>
+                  <span>○ Lore: __________ <span style={{ color: "#888" }}>(Int)</span></span>
+                  <b>{fmtMod(intMod)}</b>
+                </div>
+              </div>
+
+              <div style={{ fontSize: 11, fontWeight: 700, borderBottom: "1px solid #111", marginBottom: 4, paddingBottom: 2 }}>STRIKES</div>
+              <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse", marginBottom: 14 }}>
+                <thead>
+                  <tr style={{ textAlign: "left", borderBottom: "1px solid #111" }}>
+                    <th style={{ padding: "2px 4px 4px 0" }}>Weapon</th>
+                    <th style={{ padding: "2px 4px 4px 0" }}>Attack</th>
+                    <th style={{ padding: "2px 4px 4px 0" }}>Damage</th>
+                    <th style={{ padding: "2px 4px 4px 0" }}>Traits</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderBottom: "1px dotted #999" }}>
+                    <td style={{ padding: "4px 4px 4px 0" }}>{weapon?.name || "—"}</td>
+                    <td style={{ padding: "4px 4px 4px 0" }}>{weapon ? fmtMod(atkBonus) : "—"}</td>
+                    <td style={{ padding: "4px 4px 4px 0" }}>{weapon ? `${dmgDie}${dmgBonus ? fmtMod(dmgBonus) : ""} ${dmgType}` : "—"}</td>
+                    <td style={{ padding: "4px 4px 4px 0" }}>{weapon ? (weapon.traits.join(", ") || "—") : "—"}</td>
+                  </tr>
+                  <tr><td colSpan={4} style={{ color: "#ccc", padding: "8px 0 2px" }}>_______________________________________</td></tr>
+                </tbody>
+              </table>
+
+              <div style={{ fontSize: 11, fontWeight: 700, borderBottom: "1px solid #111", marginBottom: 4, paddingBottom: 2 }}>FEATS &amp; FEATURES</div>
+              <div style={{ fontSize: 11, marginBottom: 14, lineHeight: 1.5 }}>
+                <div><b>Ancestry —</b> {ancestryFeat ? `${ancestryFeat.name}: ${ancestryFeat.desc}` : "—"}</div>
+                <div><b>Class —</b> {classFeat ? `${classFeat.name}: ${classFeat.desc}` : "—"}</div>
+                <div style={{ color: "#999" }}><b>Skill —</b> gained at level 2</div>
+                <div style={{ color: "#999" }}><b>General —</b> gained at level 3</div>
+              </div>
+
+              <div style={{ fontSize: 11, fontWeight: 700, borderBottom: "1px solid #111", marginBottom: 4, paddingBottom: 2 }}>GEAR &amp; MONEY</div>
+              <div style={{ fontSize: 11, marginBottom: concept.want ? 10 : 0 }}>
+                {armor?.name || "No armor"}, adventurer's pack (rope, rations, bedroll, waterskin, flint &amp; steel), 15 gp starting wealth (minus purchases)
+              </div>
+
+              {concept.want && (
+                <div style={{ fontSize: 10.5, fontStyle: "italic", color: "#555", borderTop: "1px solid #111", paddingTop: 6 }}>
+                  "{concept.want}"
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="no-print" style={{ fontSize: 11, color: "var(--dim)", marginBottom: 12, lineHeight: 1.5 }}>
+            Simplified totals: flat Trained proficiency throughout, and Strikes assume Trained weapon proficiency. Some classes start Expert in a save or Perception at level 1 — check your class table and adjust by hand before play.
+          </div>
+
+          <button className="no-print" onClick={restart} style={{
+            width: "100%", padding: "12px", borderRadius: 12, background: "none",
+            border: "1px solid var(--border)", color: "var(--dim)", display: "flex", alignItems: "center",
+            justifyContent: "center", gap: 6, fontSize: 13.5, cursor: "pointer",
+          }}>
+            <span>↺</span> Start a new character
+          </button>
+        </div>
+      )}
+
+      <div className="no-print" style={{
+        position: "fixed", bottom: 0, left: 0, right: 0, background: "linear-gradient(to top, var(--bg) 70%, transparent)",
+        padding: "18px 14px 14px", display: "flex", gap: 10, maxWidth: 480, margin: "0 auto",
+      }}>
+        <button onClick={back} disabled={step === 0} style={{
+          flex: "0 0 auto", padding: "12px 16px", borderRadius: 12, border: "1px solid var(--border)",
+          background: "var(--panel)", color: step === 0 ? "var(--dim)" : "var(--text)", display: "flex", alignItems: "center", gap: 4,
+          cursor: step === 0 ? "default" : "pointer", opacity: step === 0 ? 0.5 : 1,
+        }}>
+          <span>‹</span> Back
+        </button>
+        {step < STEPS.length - 1 ? (
+          <button onClick={next} disabled={!canAdvance} style={{
+            flex: 1, padding: "12px 16px", borderRadius: 12, border: "none",
+            background: canAdvance ? "var(--ember)" : "var(--panel2)", color: canAdvance ? "#161B22" : "var(--dim)",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 4, fontWeight: 600,
+            cursor: canAdvance ? "pointer" : "default",
+          }}>
+            Next <span>›</span>
+          </button>
+        ) : (
+          <div style={{ flex: 1, textAlign: "center", padding: "12px", color: "var(--gold)", fontSize: 13.5, fontFamily: "var(--serif)" }}>
+            Ready for Hollow's Reach.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const inputStyle = {
+  width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: "1px solid #333F4E",
+  background: "#26303D", color: "#E7E2D3", fontFamily: "inherit", fontSize: 14, marginTop: 4, marginBottom: 12, outline: "none",
+};
+
+const Chip = ({ active, onClick, children, disabled }) => (
+  <button onClick={onClick} disabled={disabled} style={{
+    padding: "8px 14px", borderRadius: 999, border: `1px solid ${active ? "var(--ember)" : "var(--border)"}`,
+    background: active ? "var(--ember)" : "var(--panel2)", color: active ? "#161B22" : disabled ? "var(--dim)" : "var(--text)",
+    fontSize: 13, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.45 : 1, fontWeight: active ? 600 : 400,
+  }}>{children}</button>
+);
+
+const StatLine = ({ label, value }) => (
+  <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--border)", fontSize: 14 }}>
+    <span style={{ color: "var(--dim)" }}>{label}</span>
+    <span style={{ fontFamily: "var(--serif)" }}>{value}</span>
+  </div>
+);
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<CharacterCreator />);
+</script>
+</body>
+</html>
